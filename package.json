@@ -15,8 +15,10 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "clean": "rm -rf dist coverage"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260823.1",
