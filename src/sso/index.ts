@@ -193,15 +193,17 @@ export function assertSsoOrigin(
  */
 export function resolveOidcIssuer(
   issuerConfig: string | undefined,
-  requestUrl: string,
+  requestUrl?: string,
   allowedOriginsCsv?: string,
 ): string {
   const cleanConfig = (issuerConfig ?? "").trim().replace(/\/+$/, "");
   if (!cleanConfig) {
+    if (!requestUrl) throw new Error("request context required for dynamic OIDC_ISSUER");
     const origin = assertSsoOrigin(requestUrl, allowedOriginsCsv);
     return `${origin}/oidc`;
   }
   if (cleanConfig.startsWith("/")) {
+    if (!requestUrl) throw new Error("request context required for relative OIDC_ISSUER");
     const origin = assertSsoOrigin(requestUrl, allowedOriginsCsv);
     return `${origin}${normalizeSubPath(cleanConfig)}`;
   }
@@ -251,6 +253,7 @@ export function isSafeNextUrl(
   try {
     const target = new URL(next.trim(), origin);
     if (target.origin !== origin) return false;
+    if (target.username || target.password) return false;
     const cleanBase = normalizeSubPath(basePath);
     if (!cleanBase) return true;
     return target.pathname === cleanBase || target.pathname.startsWith(`${cleanBase}/`);
