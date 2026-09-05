@@ -1,3 +1,6 @@
-export * from "./styles";
-export * from "./i18n";
-export * from "./icons";
+export * from "./styles.js";
+export * from "./i18n.js";
+export * from "./icons.js";
+export * from "./topbar.js";
+export * from "./settings-modal.js";
+

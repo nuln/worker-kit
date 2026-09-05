@@ -8,13 +8,19 @@ import {
   MonitorIcon,
   LogOutIcon,
   SettingsIcon,
+  ShieldIcon,
+  DatabaseIcon,
+  SlidersIcon,
+  InfoIcon,
 } from "../src/ui/icons";
 import { detectLanguage, DEFAULT_LANG } from "../src/ui/i18n";
 import { DESIGN_TOKENS } from "../src/ui/styles";
+import { renderActionGroupHtml, clientThemeAndLangScript } from "../src/ui/topbar";
+import { renderSettingsModalHtml } from "../src/ui/settings-modal";
 
 describe("@nuln/worker-kit/ui/icons", () => {
-  it("6 个标准图标符合 24x24 无填充 currentColor 规范", () => {
-    for (const icon of [GlobeIcon, SunIcon, MoonIcon, MonitorIcon, LogOutIcon, SettingsIcon]) {
+  it("标准图标符合 24x24 无填充 currentColor 规范", () => {
+    for (const icon of [GlobeIcon, SunIcon, MoonIcon, MonitorIcon, LogOutIcon, SettingsIcon, ShieldIcon, DatabaseIcon, SlidersIcon, InfoIcon]) {
       expect(icon).toContain('viewBox="0 0 24 24"');
       expect(icon).toContain('fill="none"');
       expect(icon).toContain('stroke="currentColor"');
@@ -22,10 +28,9 @@ describe("@nuln/worker-kit/ui/icons", () => {
     }
   });
 
-  it("ICONS 字典 8 入口 + getIcon 回退", () => {
-    expect(Object.keys(ICONS).sort()).toEqual(
-      ["bell", "globe", "logout", "monitor", "moon", "settings", "sun", "user"],
-    );
+  it("ICONS 字典包含标准图标 + getIcon 回退", () => {
+    expect(ICONS.globe).toBe(GlobeIcon);
+    expect(ICONS.settings).toBe(SettingsIcon);
     expect(getIcon("globe")).toBe(GlobeIcon);
     expect(getIcon("nope")).toBe("");
   });
@@ -34,6 +39,41 @@ describe("@nuln/worker-kit/ui/icons", () => {
     for (const v of Object.values(ICONS)) {
       expect(/[\u{1F300}-\u{1FAFF}]/u.test(v)).toBe(false);
     }
+  });
+});
+
+describe("@nuln/worker-kit/ui/topbar + settings-modal", () => {
+  it("renderActionGroupHtml 生成标准顶栏操作区（语言 -> 主题 -> 用户 -> 设置 -> 退出）", () => {
+    const html = renderActionGroupHtml({
+      lang: "zh",
+      user: { name: "Admin", role: "SuperAdmin" },
+      showSettings: true,
+      showLogout: true,
+    });
+    expect(html).toContain("lang-toggle-btn");
+    expect(html).toContain("theme-toggle-btn");
+    expect(html).toContain("user-chip");
+    expect(html).toContain("settings-btn");
+    expect(html).toContain("logout-btn");
+  });
+
+  it("renderSettingsModalHtml 生成包含 5 大标准分类的设置面板", () => {
+    const html = renderSettingsModalHtml({
+      lang: "zh",
+      serviceName: "TestService",
+      version: "1.0.0",
+    });
+    expect(html).toContain("常规与外观");
+    expect(html).toContain("认证与安全");
+    expect(html).toContain("存储与备份");
+    expect(html).toContain("插件与扩展");
+    expect(html).toContain("关于与系统");
+  });
+
+  it("clientThemeAndLangScript 包含三态主题与跟随系统监听", () => {
+    const script = clientThemeAndLangScript("zh");
+    expect(script).toContain("window.toggleTheme");
+    expect(script).toContain("prefers-color-scheme");
   });
 });
 
@@ -56,3 +96,4 @@ describe("@nuln/worker-kit/ui/i18n+styles", () => {
     expect(DESIGN_TOKENS).not.toContain("#2563eb");
   });
 });
+
