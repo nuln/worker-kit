@@ -109,15 +109,6 @@ export function renderAuthContainer(opts: AuthContainerOptions): string {
   <title>${opts.title} - ${brand}</title>
   <style>
     ${AUTH_STYLE || ""}
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0b0f19; color: #f3f4f6; margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-    .auth-wrap { width: 100%; max-width: 420px; padding: 24px; box-sizing: border-box; }
-    .auth-brand { display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; font-size: 20px; margin-bottom: 24px; color: #fff; }
-    .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 32px 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
-    h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; text-align: center; }
-    p.muted { color: #9ca3af; font-size: 14px; margin: 0 0 20px; text-align: center; line-height: 1.5; }
-    .btn { display: inline-flex; align-items: center; justify-content: center; width: 100%; padding: 10px 16px; border-radius: 8px; font-weight: 500; font-size: 14px; cursor: pointer; text-decoration: none; border: none; box-sizing: border-box; transition: opacity 0.2s; }
-    .btn.primary { background: #2563eb; color: #fff; }
-    .btn.primary:hover { opacity: 0.9; }
   </style>
   ${opts.headHtml || ""}
 </head>
