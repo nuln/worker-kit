@@ -1,13 +1,14 @@
 /**
- * @nuln/worker-kit/sso
+ * @nuln/worker-kit/urls
  *
- * 统一多域名同构部署与 OIDC 动态单点登录规范库
+ * 边缘多域名与 BasePath 动态解析规范库
  * 遵循 MULTI_DOMAIN_DYNAMIC_OIDC_SPEC.md (v1.4)
  */
 
 export interface IssuerEnv {
   AUTH_SERVER_URL?: string;
   ORIGIN?: string;
+  RP_ID?: string;
 }
 
 /** 归一化 Origin（仅保留 scheme://host[:port]）。 */
@@ -82,7 +83,7 @@ export function parseOriginAllowlist(
  * 动态解析当前请求的 OIDC Issuer URL (IdP 侧)。
  * 1. 显式绝对 URL（单域/集中模式）：保全子路径直接使用，但请求 Host 仍须过白名单；
  * 2. 相对路径或未配置：按白名单动态派生 `${origin}${base}`；
- * 3. 未命中白名单直接抛错（fail-closed），绝不反射未知 Host。
+ * 3. 自动放行 RP_ID 自身域、本地回环或 ORIGIN 白名单，拒绝未授权 Host。
  */
 export function resolveIssuer(
   reqUrl: string,
@@ -102,11 +103,20 @@ export function resolveIssuer(
     }
   }
   const allowedOrigins = parseOriginAllowlist(env.ORIGIN, defaultTrustedOrigin);
-  if (
-    !allowedOrigins.includes("*") &&
-    !isLoopbackHostname(url.hostname) &&
-    !allowedOrigins.includes(requestOrigin)
-  ) {
+  const rpIDs = (env.RP_ID || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const cleanHost = url.hostname.toLowerCase();
+  const matchesRpID = rpIDs.some((id) => cleanHost === id || cleanHost.endsWith("." + id));
+
+  const isAllowed =
+    allowedOrigins.includes("*") ||
+    isLoopbackHostname(url.hostname) ||
+    matchesRpID ||
+    allowedOrigins.includes(requestOrigin);
+
+  if (!isAllowed) {
     throw new Error(`invalid_host: ${requestOrigin} not in ORIGIN allowlist`);
   }
   if (isAbsoluteConfig) {
@@ -183,85 +193,7 @@ export function selectRpId(hostname: string, rpIds: string[]): string {
 }
 
 /**
- * 断言请求 Origin 在白名单内 (SP 侧 fail-closed)：
- * 未配置白名单时，回环地址自动放行（开发环境），生产环境直接抛错。
- */
-export function assertSsoOrigin(
-  requestUrl: string,
-  allowedOriginsCsv: string | undefined,
-): string {
-  const url = new URL(requestUrl);
-  const origin = normalizeOrigin(url.origin);
-  const allowed = parseOriginAllowlist(allowedOriginsCsv);
-  if (allowed.length === 0) {
-    if (isLoopbackHostname(url.hostname)) return origin;
-    throw new Error(
-      "missing_config: ALLOWED_SSO_ORIGINS must be configured in production",
-    );
-  }
-  if (!allowed.includes(origin)) {
-    throw new Error(`invalid_sso_host: ${origin} not in ALLOWED_SSO_ORIGINS`);
-  }
-  return origin;
-}
-
-/**
- * 解析 SP 侧目标 OIDC Issuer：
- * 相对路径（如 "/oidc"）或空值时与当前请求 origin 拼接（须先过白名单）；
- * 绝对 URL 直接归一化使用。
- */
-export function resolveOidcIssuer(
-  issuerConfig: string | undefined,
-  requestUrl?: string,
-  allowedOriginsCsv?: string,
-): string {
-  const cleanConfig = (issuerConfig ?? "").trim().replace(/\/+$/, "");
-  if (!cleanConfig) {
-    if (!requestUrl) throw new Error("request context required for dynamic OIDC_ISSUER");
-    const origin = assertSsoOrigin(requestUrl, allowedOriginsCsv);
-    return `${origin}/oidc`;
-  }
-  if (cleanConfig.startsWith("/")) {
-    if (!requestUrl) throw new Error("request context required for relative OIDC_ISSUER");
-    const origin = assertSsoOrigin(requestUrl, allowedOriginsCsv);
-    return `${origin}${normalizeSubPath(cleanConfig)}`;
-  }
-  if (/^https?:\/\//i.test(cleanConfig)) return normalizeIssuerUrl(cleanConfig);
-  throw new Error(
-    "invalid_oidc_issuer_config: must be relative path or absolute http(s) URL",
-  );
-}
-
-/**
- * 自动派生回调地址 (SP 侧)：
- * 环境覆盖（绝对或相对路径）优先并规范化；缺省为
- * `${origin}${base}/admin/oidc/callback`。
- */
-export function resolveOidcRedirectUri(
-  envRedirectUri: string | undefined,
-  requestUrl: string,
-  basePath = "",
-  callbackSubpath = "/admin/oidc/callback",
-  allowedOriginsCsv?: string,
-): string {
-  const origin = assertSsoOrigin(requestUrl, allowedOriginsCsv);
-  if (envRedirectUri && envRedirectUri.trim()) {
-    const raw = envRedirectUri.trim();
-    const full = raw.startsWith("/") ? `${origin}${normalizeSubPath(raw)}` : raw;
-    return normalizeRedirectUri(full);
-  }
-  const base = normalizeSubPath(basePath);
-  const sub = `/${String(callbackSubpath || "").replace(/^\/+/, "")}`;
-  const combined = `${base}${sub}`;
-  if (/(^|\/)\.\.(\/|$)/.test(combined)) {
-    throw new Error("invalid_callback_subpath: dot segments not allowed");
-  }
-  return normalizeRedirectUri(`${origin}${combined}`);
-}
-
-/**
  * 回跳 URL 安全校验：必须同源且落在当前 SP 的 basePath 范围内
- *（含 exact base 与子路径），根路径部署放行同源任意路径。
  */
 export function isSafeNextUrl(
   next: string | null | undefined,

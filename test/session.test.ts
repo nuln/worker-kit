@@ -42,4 +42,17 @@ describe("@nuln/worker-kit/session", () => {
     expect(c).toContain("Path=/tower");
     expect(c).not.toContain("Secure");
   });
+
+  it("AuthSessionDO: 状态读写与单次 CAS 消费 (take)", async () => {
+    const { AuthSessionDO } = await import("../src/session/do.js");
+    const store = new AuthSessionDO({}, {});
+    await store.set("token_1", "user_100", 60);
+
+    expect(await store.get("token_1")).toBe("user_100");
+    // 单次原子消费
+    expect(await store.take("token_1")).toBe("user_100");
+    // 再次读取已被清空
+    expect(await store.get("token_1")).toBeNull();
+    expect(await store.take("token_1")).toBeNull();
+  });
 });

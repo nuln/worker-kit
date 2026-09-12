@@ -61,3 +61,6 @@ export function formatSessionCookie(
   const attrs = cookieAttrs(requestOrSecure, { path, maxAge, sameSite: "Lax", httpOnly: true });
   return `${name}=${encodeURIComponent(token)}; ${attrs}`;
 }
+
+export * from "./do.js";
+

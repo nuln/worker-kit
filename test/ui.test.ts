@@ -97,3 +97,38 @@ describe("@nuln/worker-kit/ui/i18n+styles", () => {
   });
 });
 
+describe("@nuln/worker-kit/ui/auth", () => {
+  it("renderPasskeyClientScript: 生成 Passkey 前端辅助脚本", async () => {
+    const { renderPasskeyClientScript } = await import("../src/ui/auth.js");
+    const script = renderPasskeyClientScript("/oidc");
+    expect(script).toContain("b64urlToBuf");
+    expect(script).toContain("bufToB64url");
+    expect(script).toContain("startPasskeyLogin");
+    expect(script).toContain("/oidc/api/auth/webauthn/login/options");
+  });
+
+  it("renderAuthContainer & renderConfirmCard: 渲染认证模版与确认卡片", async () => {
+    const { renderAuthContainer, renderConfirmCard } = await import("../src/ui/auth.js");
+    const c1 = renderAuthContainer({
+      title: "用户登录",
+      brandName: "OIDC",
+      bodyHtml: "<p>表单内容</p>",
+    });
+    expect(c1).toContain("用户登录");
+    expect(c1).toContain("OIDC");
+    expect(c1).toContain("表单内容");
+
+    const c2 = renderConfirmCard({
+      title: "确认免密登录",
+      message: "确认以 test@nuln.dev 登录当前会话？",
+      actionUrl: "/api/auth/verify",
+      buttonText: "确认登录",
+      csrfToken: "mock-csrf-token",
+    });
+    expect(c2).toContain("确认免密登录");
+    expect(c2).toContain("mock-csrf-token");
+    expect(c2).toContain("确认登录");
+  });
+});
+
+

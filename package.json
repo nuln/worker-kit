@@ -9,9 +9,19 @@
     ".": "./src/index.ts",
     "./sso": "./src/sso/index.ts",
     "./ui": "./src/ui/index.ts",
+    "./ui/styles": "./src/ui/styles.ts",
     "./crypto": "./src/crypto/index.ts",
     "./session": "./src/session/index.ts",
-    "./http": "./src/http/index.ts"
+    "./http": "./src/http/index.ts",
+    "./sync": "./src/sync/index.ts",
+    "./urls": "./src/urls/index.ts",
+    "./flags": "./src/flags/index.ts",
+    "./rbac": "./src/rbac/index.ts",
+    "./ratelimit": "./src/ratelimit/index.ts",
+    "./email": "./src/email/index.ts",
+    "./webauthn": "./src/webauthn/index.ts",
+    "./auth": "./src/auth/index.ts",
+    "./dns": "./src/dns/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -35,5 +45,9 @@
     "nuln"
   ],
   "author": "Nuln Team",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@levischuck/tiny-cbor": "^0.2.11",
+    "@simplewebauthn/server": "^13.3.3"
+  }
 }
