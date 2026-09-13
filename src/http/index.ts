@@ -70,3 +70,32 @@ export function getClientIp(request: Request): string {
     "127.0.0.1"
   );
 }
+
+export function escapeHtml(str: string): string {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+export function formatBytes(bytes: number, decimals = 2): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ["B", "KB", "MB", "GB", "TB", "PB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i] || "B"}`;
+}
+
+export function errorResponse(message: string, status = 400, details?: unknown): Response {
+  return jsonResponse(
+    {
+      ok: false,
+      error: message,
+      ...(details !== undefined ? { details } : {}),
+    },
+    status,
+  );
+}

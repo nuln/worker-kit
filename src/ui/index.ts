@@ -4,4 +4,5 @@ export * from "./icons.js";
 export * from "./topbar.js";
 export * from "./settings-modal.js";
 export * from "./auth.js";
+export * from "./auth-pages.js";
 
