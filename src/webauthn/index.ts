@@ -131,9 +131,13 @@ export function resolveExpectedRPIDs(configuredRpID: string | string[], reqHost?
   return Array.from(list);
 }
 
-export function resolveExpectedOrigins(configuredOrigin: string | string[], reqOrigin?: string): string[] {
+export function resolveExpectedOrigins(configuredOrigin?: string | string[] | null, reqOrigin?: string): string[] {
   const list = new Set<string>();
-  const configuredList = (Array.isArray(configuredOrigin) ? configuredOrigin : [configuredOrigin])
+  const rawList = Array.isArray(configuredOrigin)
+    ? configuredOrigin
+    : (configuredOrigin ? [configuredOrigin] : []);
+  const configuredList = rawList
+    .filter((s): s is string => typeof s === "string")
     .map((s) => s.trim().replace(/\/$/, ""))
     .filter(Boolean);
   const validConfigured = configuredList.filter(

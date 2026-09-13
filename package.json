@@ -27,13 +27,15 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "clean": "rm -rf dist coverage"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260823.1",
+    "@vitest/coverage-v8": "4.1.11",
     "typescript": "^5.9.2",
-    "vitest": "^4.1.11"
+    "vitest": "4.1.11"
   },
   "keywords": [
     "cloudflare-workers",
