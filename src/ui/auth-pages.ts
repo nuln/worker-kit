@@ -92,6 +92,59 @@ input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px
 .auth-links { display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 12.5px; margin-top: 4px; }
 .auth-links a { color: var(--text-secondary); text-decoration: none; }
 .auth-links a:hover { color: var(--text-primary); text-decoration: underline; }
+
+/* 模态弹窗 (Modal Alert Dialog) */
+.modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.modal.open { display: flex; }
+.sheet {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-base);
+  border-radius: 14px;
+  box-shadow: var(--shadow-modal);
+  padding: 24px;
+  width: 100%;
+  max-width: 380px;
+  position: relative;
+  box-sizing: border-box;
+  animation: modal-in 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.96) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.sheet h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+.sheet .close-x {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 4px;
+  line-height: 1;
+}
+.sheet .close-x:hover { color: var(--text-primary); }
+.sheet .modal-body { font-size: 13.5px; line-height: 1.6; color: var(--text-primary); margin-bottom: 20px; }
+.sheet .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.sheet .modal-actions .btn { width: auto; height: 36px; padding: 0 16px; font-size: 13px; }
 `;
 
 const WEBAUTHN_SCRIPT = (basePath: string) => `
@@ -101,11 +154,43 @@ const P = (t) => B + t;
 function b64urlToBuf(b){ const s = atob(b.replace(/-/g,'+').replace(/_/g,'/')); const u = new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i); return u.buffer; }
 function bufToB64url(buf){ const u = new Uint8Array(buf); let s=''; for(let i=0;i<u.length;i++) s+=String.fromCharCode(u[i]); return btoa(s).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,''); }
 function setMsg(m){ const el=document.getElementById('msg'); if(el) el.textContent=m; }
+function escHtml(v){ return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+function ensureModal(){
+  let m=document.getElementById('app-modal');
+  if(!m){
+    m=document.createElement('div'); m.id='app-modal'; m.className='modal';
+    m.innerHTML='<div class="sheet"><button class="close-x" onclick="closeModal()">✕</button><h3 id="app-modal-t"></h3><div class="modal-body" id="app-modal-b"></div><div class="modal-actions" id="app-modal-a"></div></div>';
+    m.addEventListener('click',function(e){ if(e.target===m) closeModal(); });
+    document.body.appendChild(m);
+  }
+  return m;
+}
+function openModal(title, html, buttons){
+  ensureModal();
+  document.getElementById('app-modal-t').textContent=title;
+  document.getElementById('app-modal-b').innerHTML=html;
+  const a=document.getElementById('app-modal-a'); a.innerHTML='';
+  (buttons||[]).forEach(function(btn){
+    const el=document.createElement('button');
+    el.textContent=btn.text;
+    el.className='btn ' + (btn.danger?'danger':(btn.primary?'primary':'secondary'));
+    el.onclick=function(){ closeModal(); if(btn.onClick) btn.onClick(); };
+    a.appendChild(el);
+  });
+  document.getElementById('app-modal').classList.add('open');
+}
+function closeModal(){ const m=document.getElementById('app-modal'); if(m) m.classList.remove('open'); }
+function alertDlg(text, onOk){
+  openModal('提示', '<div style="line-height:1.6">'+escHtml(text)+'</div>', [{text:'知道了', primary:true, onClick:onOk}]);
+}
 
 async function loginPasskey(){
   setMsg('');
   if (!window.isSecureContext || !navigator.credentials || !navigator.credentials.get) {
-    setMsg('当前环境不支持 Passkey 生物识别，请使用 HTTPS 或 localhost 访问');
+    const tip = '当前环境不支持 Passkey 生物识别，请使用 HTTPS 或 localhost 访问';
+    setMsg(tip);
+    alertDlg(tip);
     return;
   }
   const btn = document.getElementById('passkey-btn');
@@ -157,9 +242,13 @@ async function loginPasskey(){
     if(btnSpan) btnSpan.textContent = '重试 Passkey 快捷登录';
     const msg = (e && (e.message || String(e))) || '';
     if (e && (e.name === 'NotAllowedError' || msg.includes('timed out') || msg.includes('not allowed') || msg.includes('The operation either timed out or was not allowed') || msg.includes('cancelled') || msg.includes('canceled') || msg.includes('AbortError'))) {
-      setMsg('通行密钥验证已取消或超时，请重试');
+      const err = '通行密钥验证已取消或超时，请重试';
+      setMsg(err);
+      alertDlg(err);
     } else {
-      setMsg(msg || 'Passkey 快捷登录失败');
+      const err = 'Passkey 快捷登录失败：' + (msg || '设备未返回凭据');
+      setMsg(err);
+      alertDlg(err);
     }
   }
 }
@@ -167,13 +256,20 @@ async function loginPasskey(){
 async function setupPasskey(){
   setMsg('');
   if (!window.isSecureContext || !navigator.credentials || !navigator.credentials.create) {
-    setMsg('当前环境不支持 Passkey 生物识别，请使用 HTTPS 或 localhost 访问');
+    const tip = '当前环境不支持 Passkey 生物识别，请使用 HTTPS 或 localhost 访问';
+    setMsg(tip);
+    alertDlg(tip);
     return;
   }
   const emailEl = document.getElementById('email');
   const email = emailEl ? emailEl.value.trim() : '';
   const pkName = (document.getElementById('pk-name')?.value || '').trim() || 'Master Passkey';
-  if(!email) { setMsg('请输入管理员邮箱'); return; }
+  if(!email) {
+    const tip = '请输入管理员邮箱';
+    setMsg(tip);
+    alertDlg(tip);
+    return;
+  }
 
   const btn = document.getElementById('setup-btn');
   const btnSpan = btn ? btn.querySelector('span') : null;
@@ -230,9 +326,13 @@ async function setupPasskey(){
     if(btnSpan) btnSpan.textContent = '重试注册并绑定 Passkey';
     const msg = (e && (e.message || String(e))) || '';
     if (e && (e.name === 'NotAllowedError' || msg.includes('timed out') || msg.includes('not allowed') || msg.includes('The operation either timed out or was not allowed') || msg.includes('cancelled') || msg.includes('canceled') || msg.includes('AbortError'))) {
-      setMsg('通行密钥验证已取消或超时，请重试');
+      const err = '通行密钥验证已取消或超时，请重试';
+      setMsg(err);
+      alertDlg(err);
     } else {
-      setMsg('Passkey 绑定未完成：' + (msg || '设备未返回凭据') + '。必须成功绑定 Passkey 才能完成站点初始化。');
+      const err = 'Passkey 绑定未完成：' + (msg || '设备未返回凭据') + '。必须成功绑定 Passkey 才能完成站点初始化。';
+      setMsg(err);
+      alertDlg(err);
     }
   }
 }
