@@ -104,17 +104,25 @@ function setMsg(m){ const el=document.getElementById('msg'); if(el) el.textConte
 
 async function loginPasskey(){
   setMsg('');
+  if (!window.isSecureContext || !navigator.credentials || !navigator.credentials.get) {
+    setMsg('当前环境不支持 Passkey 生物识别，请使用 HTTPS 或 localhost 访问');
+    return;
+  }
   const btn = document.getElementById('passkey-btn');
+  const btnSpan = btn ? btn.querySelector('span') : null;
   if(btn) btn.disabled = true;
   try {
     const rOpt = await fetch(P('/api/auth/webauthn/login/options'), { method:'POST' });
-    if(!rOpt.ok) throw new Error('Failed to get options');
+    if(!rOpt.ok) {
+      const e = await rOpt.json().catch(()=>({}));
+      throw new Error(e.error || '获取登录参数失败');
+    }
     const { tmp, options } = await rOpt.json();
     options.challenge = b64urlToBuf(options.challenge);
     if(options.allowCredentials) options.allowCredentials = options.allowCredentials.map(c=>({...c, id: b64urlToBuf(c.id)}));
 
     const cred = await navigator.credentials.get({ publicKey: options });
-    if(!cred) throw new Error('Biometric cancelled');
+    if(!cred) throw new Error('设备未返回凭据');
 
     const vRes = await fetch(P('/api/auth/webauthn/login/verify'), {
       method: 'POST',
@@ -137,24 +145,38 @@ async function loginPasskey(){
 
     if(!vRes.ok) {
       const e = await vRes.json().catch(()=>({}));
-      throw new Error(e.error || 'Verification failed');
+      throw new Error(e.error || 'Passkey 验证失败');
     }
     const data = await vRes.json();
-    location.href = data.redirect || P('/admin') || P('/');
+    if (!data.ok && !data.redirect) {
+      throw new Error(data.error || 'Passkey 验证失败');
+    }
+    location.href = data.redirect || P('/app') || P('/');
   } catch(e) {
     if(btn) btn.disabled = false;
-    setMsg(e.message || 'Passkey 登录失败');
+    if(btnSpan) btnSpan.textContent = '重试 Passkey 快捷登录';
+    const msg = (e && (e.message || String(e))) || '';
+    if (e && (e.name === 'NotAllowedError' || msg.includes('timed out') || msg.includes('not allowed') || msg.includes('The operation either timed out or was not allowed') || msg.includes('cancelled') || msg.includes('canceled') || msg.includes('AbortError'))) {
+      setMsg('通行密钥验证已取消或超时，请重试');
+    } else {
+      setMsg(msg || 'Passkey 快捷登录失败');
+    }
   }
 }
 
 async function setupPasskey(){
   setMsg('');
+  if (!window.isSecureContext || !navigator.credentials || !navigator.credentials.create) {
+    setMsg('当前环境不支持 Passkey 生物识别，请使用 HTTPS 或 localhost 访问');
+    return;
+  }
   const emailEl = document.getElementById('email');
   const email = emailEl ? emailEl.value.trim() : '';
   const pkName = (document.getElementById('pk-name')?.value || '').trim() || 'Master Passkey';
   if(!email) { setMsg('请输入管理员邮箱'); return; }
 
   const btn = document.getElementById('setup-btn');
+  const btnSpan = btn ? btn.querySelector('span') : null;
   if(btn) btn.disabled = true;
   try {
     const rOpt = await fetch(P('/api/setup/options'), {
@@ -162,14 +184,17 @@ async function setupPasskey(){
       headers:{'content-type':'application/json'},
       body: JSON.stringify({ email, name: pkName })
     });
-    if(!rOpt.ok) throw new Error('Failed to start setup');
+    if(!rOpt.ok) {
+      const e = await rOpt.json().catch(()=>({}));
+      throw new Error(e.error || '获取初始化参数失败');
+    }
     const { tmp, options } = await rOpt.json();
     options.challenge = b64urlToBuf(options.challenge);
     options.user.id = b64urlToBuf(options.user.id);
     if(options.excludeCredentials) options.excludeCredentials = options.excludeCredentials.map(c=>({...c, id: b64urlToBuf(c.id)}));
 
     const cred = await navigator.credentials.create({ publicKey: options });
-    if(!cred) throw new Error('Registration cancelled');
+    if(!cred) throw new Error('设备未返回凭据');
 
     const vRes = await fetch(P('/api/setup/verify'), {
       method: 'POST',
@@ -177,6 +202,7 @@ async function setupPasskey(){
       body: JSON.stringify({
         tmp,
         pkName,
+        email,
         response: {
           id: cred.id,
           rawId: bufToB64url(cred.rawId),
@@ -192,13 +218,22 @@ async function setupPasskey(){
 
     if(!vRes.ok) {
       const e = await vRes.json().catch(()=>({}));
-      throw new Error(e.error || 'Setup verification failed');
+      throw new Error(e.error || '初始化验证失败');
     }
     const data = await vRes.json();
-    location.href = data.redirect || P('/admin') || P('/');
+    if (!data.ok && !data.redirect) {
+      throw new Error(data.error || '初始化验证失败');
+    }
+    location.href = data.redirect || P('/app') || P('/');
   } catch(e) {
     if(btn) btn.disabled = false;
-    setMsg(e.message || '初始化失败');
+    if(btnSpan) btnSpan.textContent = '重试注册并绑定 Passkey';
+    const msg = (e && (e.message || String(e))) || '';
+    if (e && (e.name === 'NotAllowedError' || msg.includes('timed out') || msg.includes('not allowed') || msg.includes('The operation either timed out or was not allowed') || msg.includes('cancelled') || msg.includes('canceled') || msg.includes('AbortError'))) {
+      setMsg('通行密钥验证已取消或超时，请重试');
+    } else {
+      setMsg('Passkey 绑定未完成：' + (msg || '设备未返回凭据') + '。必须成功绑定 Passkey 才能完成站点初始化。');
+    }
   }
 }
 </script>
