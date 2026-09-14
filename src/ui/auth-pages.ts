@@ -6,11 +6,13 @@
 
 import { DESIGN_TOKENS } from "./styles.js";
 import { escapeHtml } from "../http/index.js";
+import { MODAL_CSS, MODAL_JS } from "./modal.js";
 
 const FAVICON_TAG = `<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%23181b20'/%3E%3Ccircle cx='256' cy='256' r='144' fill='none' stroke='%23ffffff' stroke-width='32' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cellipse cx='256' cy='256' rx='72' ry='144' fill='none' stroke='%23ffffff' stroke-width='32' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cline x1='112' y1='256' x2='400' y2='256' stroke='%23ffffff' stroke-width='32' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">`;
 
 const AUTH_STYLE = `
 ${DESIGN_TOKENS}
+${MODAL_CSS}
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: var(--font-sans);
@@ -92,98 +94,17 @@ input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px
 .auth-links { display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 12.5px; margin-top: 4px; }
 .auth-links a { color: var(--text-secondary); text-decoration: none; }
 .auth-links a:hover { color: var(--text-primary); text-decoration: underline; }
-
-/* 模态弹窗 (Modal Alert Dialog) */
-.modal {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  z-index: 1000;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-}
-.modal.open { display: flex; }
-.sheet {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-base);
-  border-radius: 14px;
-  box-shadow: var(--shadow-modal);
-  padding: 24px;
-  width: 100%;
-  max-width: 380px;
-  position: relative;
-  box-sizing: border-box;
-  animation: modal-in 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-}
-@keyframes modal-in {
-  from { opacity: 0; transform: scale(0.96) translateY(4px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
-}
-.sheet h3 {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-bottom: 12px;
-}
-.sheet .close-x {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  background: none;
-  border: none;
-  font-size: 16px;
-  cursor: pointer;
-  color: var(--text-secondary);
-  padding: 4px;
-  line-height: 1;
-}
-.sheet .close-x:hover { color: var(--text-primary); }
-.sheet .modal-body { font-size: 13.5px; line-height: 1.6; color: var(--text-primary); margin-bottom: 20px; }
-.sheet .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.sheet .modal-actions .btn { width: auto; height: 36px; padding: 0 16px; font-size: 13px; }
 `;
 
 const WEBAUTHN_SCRIPT = (basePath: string) => `
 <script>
+${MODAL_JS}
 const B = ${JSON.stringify(basePath)};
 const P = (t) => B + t;
 function b64urlToBuf(b){ const s = atob(b.replace(/-/g,'+').replace(/_/g,'/')); const u = new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i); return u.buffer; }
 function bufToB64url(buf){ const u = new Uint8Array(buf); let s=''; for(let i=0;i<u.length;i++) s+=String.fromCharCode(u[i]); return btoa(s).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,''); }
 function setMsg(m){ const el=document.getElementById('msg'); if(el) el.textContent=m; }
 function escHtml(v){ return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
-
-function ensureModal(){
-  let m=document.getElementById('app-modal');
-  if(!m){
-    m=document.createElement('div'); m.id='app-modal'; m.className='modal';
-    m.innerHTML='<div class="sheet"><button class="close-x" onclick="closeModal()">✕</button><h3 id="app-modal-t"></h3><div class="modal-body" id="app-modal-b"></div><div class="modal-actions" id="app-modal-a"></div></div>';
-    m.addEventListener('click',function(e){ if(e.target===m) closeModal(); });
-    document.body.appendChild(m);
-  }
-  return m;
-}
-function openModal(title, html, buttons){
-  ensureModal();
-  document.getElementById('app-modal-t').textContent=title;
-  document.getElementById('app-modal-b').innerHTML=html;
-  const a=document.getElementById('app-modal-a'); a.innerHTML='';
-  (buttons||[]).forEach(function(btn){
-    const el=document.createElement('button');
-    el.textContent=btn.text;
-    el.className='btn ' + (btn.danger?'danger':(btn.primary?'primary':'secondary'));
-    el.onclick=function(){ closeModal(); if(btn.onClick) btn.onClick(); };
-    a.appendChild(el);
-  });
-  document.getElementById('app-modal').classList.add('open');
-}
-function closeModal(){ const m=document.getElementById('app-modal'); if(m) m.classList.remove('open'); }
-function alertDlg(text, onOk){
-  openModal('提示', '<div style="line-height:1.6">'+escHtml(text)+'</div>', [{text:'知道了', primary:true, onClick:onOk}]);
-}
 
 async function loginPasskey(){
   setMsg('');
@@ -357,7 +278,7 @@ export function renderLoginHtml(opts: RenderLoginOptions): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>${escapeHtml(name)} · 登录</title>
+  <title>${escapeHtml(name)}</title>
   ${FAVICON_TAG}
   <style>${AUTH_STYLE}</style>
   ${WEBAUTHN_SCRIPT(b)}
@@ -405,14 +326,14 @@ export interface RenderSetupOptions {
 export function renderSetupHtml(opts: RenderSetupOptions): string {
   const b = opts.basePath || "";
   const name = opts.serviceName || "Service";
-  const defEmail = opts.defaultEmail || "admin@local";
+  const defEmail = opts.defaultEmail || "";
 
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>${escapeHtml(name)} · 初始化管理员</title>
+  <title>${escapeHtml(name)}</title>
   ${FAVICON_TAG}
   <style>${AUTH_STYLE}</style>
   ${WEBAUTHN_SCRIPT(b)}
@@ -428,7 +349,7 @@ export function renderSetupHtml(opts: RenderSetupOptions): string {
       </div>
 
       <input id="email" type="email" placeholder="管理员邮箱" value="${escapeHtml(defEmail)}" autofocus required>
-      <input id="pk-name" type="text" placeholder="Passkey 凭据名称（如 Touch ID）" value="Master Passkey" required>
+      <input id="pk-name" type="text" placeholder="Passkey 凭据名称（如 Touch ID）" value="" required>
 
       <button id="setup-btn" class="btn primary" onclick="setupPasskey()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-1.5 1.5L13 10m2-4-2 2m-3-1a6.5 6.5 0 1 0 5 9.5L22 4l-2-2-4 4"/></svg>
@@ -445,3 +366,126 @@ export function renderSetupHtml(opts: RenderSetupOptions): string {
 </body>
 </html>`;
 }
+
+export interface RenderInviteOptions {
+  serviceName: string;
+  basePath?: string;
+  inviteCode?: string;
+}
+
+export function renderInviteHtml(opts: RenderInviteOptions): string {
+  const b = opts.basePath || "";
+  const name = opts.serviceName || "Service";
+  const code = opts.inviteCode || "";
+
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>${escapeHtml(name)}</title>
+  ${FAVICON_TAG}
+  <style>${AUTH_STYLE}</style>
+  ${WEBAUTHN_SCRIPT(b)}
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="card">
+      <div class="brand-header">
+        <div class="brand-badge">
+          <span>${escapeHtml(name)}</span>
+        </div>
+        <h2 style="font-size:16px;font-weight:700">受邀注册</h2>
+      </div>
+
+      <input id="invite-code" type="text" placeholder="邀请码" value="${escapeHtml(code)}" ${code ? "readonly" : "autofocus"} required>
+      <input id="email" type="email" placeholder="电子邮箱" required>
+      <input id="pk-name" type="text" placeholder="凭据名称（如 Face ID / Touch ID）" required>
+
+      <button id="setup-btn" class="btn primary" onclick="setupPasskey()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-1.5 1.5L13 10m2-4-2 2m-3-1a6.5 6.5 0 1 0 5 9.5L22 4l-2-2-4 4"/></svg>
+        <span>注册并绑定通行密钥</span>
+      </button>
+
+      <div id="msg" class="msg"></div>
+
+      <div class="auth-links">
+        <a href="${b}/login">已有账号？返回登录</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export interface RenderRecoveryOptions {
+  serviceName: string;
+  basePath?: string;
+}
+
+export function renderRecoveryHtml(opts: RenderRecoveryOptions): string {
+  const b = opts.basePath || "";
+  const name = opts.serviceName || "Service";
+
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>${escapeHtml(name)}</title>
+  ${FAVICON_TAG}
+  <style>${AUTH_STYLE}</style>
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="card">
+      <div class="brand-header">
+        <div class="brand-badge">
+          <span>${escapeHtml(name)}</span>
+        </div>
+        <h2 style="font-size:16px;font-weight:700">找回账号凭据</h2>
+      </div>
+
+      <input id="email" type="email" placeholder="注册时绑定的邮箱" autofocus required>
+
+      <button id="recovery-btn" class="btn primary" onclick="sendRecoveryLink()">
+        <span>发送恢复邮件</span>
+      </button>
+
+      <div id="msg" class="msg"></div>
+
+      <div class="auth-links">
+        <a href="${b}/login">返回登录</a>
+      </div>
+    </div>
+  </div>
+  <script>
+    ${MODAL_JS}
+    const B = ${JSON.stringify(b)};
+    async function sendRecoveryLink() {
+      const email = document.getElementById('email')?.value?.trim();
+      if (!email) {
+        alertDlg('请输入注册邮箱');
+        return;
+      }
+      const btn = document.getElementById('recovery-btn');
+      if (btn) btn.disabled = true;
+      try {
+        const res = await fetch(B + '/api/auth/recovery', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || '请求发送失败');
+        alertDlg('恢复邮件已发送，请查收邮箱并按指引操作。');
+      } catch (err) {
+        if (btn) btn.disabled = false;
+        alertDlg(err.message || '发送失败');
+      }
+    }
+  </script>
+</body>
+</html>`;
+}
+

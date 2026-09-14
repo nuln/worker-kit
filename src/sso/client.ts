@@ -150,3 +150,58 @@ export function parseJwtPayload<T = Record<string, unknown>>(token: string): T {
   const jsonStr = new TextDecoder().decode(payloadBytes);
   return JSON.parse(jsonStr) as T;
 }
+
+/** OIDC 客户端面向对象封装 */
+export class OidcClient {
+  constructor(
+    public config: {
+      issuer: string;
+      clientId: string;
+      clientSecret?: string;
+      redirectUri: string;
+      scope?: string;
+      fetchImpl?: typeof fetch;
+    },
+  ) {}
+
+  async discover(): Promise<OidcDiscoveryDoc> {
+    return discoverOidc(this.config.issuer, this.config.fetchImpl);
+  }
+
+  async getAuthorizeUrl(opts: { state: string; nonce?: string; codeChallenge?: string }): Promise<string> {
+    const doc = await this.discover();
+    return buildOidcAuthorizeUrl({
+      authorizationEndpoint: doc.authorization_endpoint,
+      clientId: this.config.clientId,
+      redirectUri: this.config.redirectUri,
+      state: opts.state,
+      scope: this.config.scope,
+      nonce: opts.nonce,
+      codeChallenge: opts.codeChallenge,
+    });
+  }
+
+  async exchangeCode(code: string, codeVerifier?: string): Promise<OidcTokenResponse> {
+    const doc = await this.discover();
+    return exchangeOidcCode({
+      tokenEndpoint: doc.token_endpoint,
+      clientId: this.config.clientId,
+      clientSecret: this.config.clientSecret,
+      code,
+      redirectUri: this.config.redirectUri,
+      codeVerifier,
+      fetchImpl: this.config.fetchImpl,
+    });
+  }
+
+  async getUserInfo(accessToken: string): Promise<OidcUserInfoResponse> {
+    const doc = await this.discover();
+    if (!doc.userinfo_endpoint) throw new Error("oidc_no_userinfo_endpoint");
+    return fetchOidcUserInfo({
+      userinfoEndpoint: doc.userinfo_endpoint,
+      accessToken,
+      fetchImpl: this.config.fetchImpl,
+    });
+  }
+}
+

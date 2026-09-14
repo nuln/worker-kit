@@ -6,6 +6,8 @@
  * 与工作区根目录 design-system-template.css 的 Design Tokens 严格对齐。
  */
 
+import { MODAL_CSS } from "./modal.js";
+
 export const DESIGN_TOKENS = `
   :root {
     color-scheme: light;
@@ -979,74 +981,7 @@ const BADGE_RULES = `
   .empty { text-align: center; padding: 36px 12px; color: var(--text-tertiary); font-size: 13px; }
 `;
 
-const MODAL_TOAST_RULES = `
-  /* 模态弹窗 */
-  .modal {
-    position: fixed;
-    inset: 0;
-    background: rgba(10, 12, 16, 0.4);
-    backdrop-filter: blur(3px);
-    -webkit-backdrop-filter: blur(3px);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-    padding: 20px;
-  }
-  .modal.open { display: flex; }
-  .sheet {
-    background: var(--bg-surface);
-    border-radius: var(--radius-lg);
-    width: min(540px, 100%);
-    padding: 22px 24px;
-    max-height: calc(100vh - 60px);
-    overflow-y: auto;
-    position: relative;
-    box-shadow: var(--shadow-modal);
-    border: 1px solid var(--border-base);
-    animation: modalIn .15s ease-out;
-  }
-  @keyframes modalIn {
-    from { transform: scale(0.96) translateY(6px); opacity: 0; }
-    to { transform: scale(1) translateY(0); opacity: 1; }
-  }
-  .sheet h3 { margin: 0 0 12px; font-size: 15px; font-weight: 600; color: var(--text-primary); }
-  .sheet .close-x {
-    position: absolute;
-    top: 16px;
-    right: 16px;
-    background: transparent;
-    border: none;
-    font-size: 16px;
-    color: var(--text-tertiary);
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: var(--radius-sm);
-  }
-  .sheet .close-x:hover { color: var(--text-primary); background: var(--bg-hover); }
-  .sheet .modal-body { font-size: 13.5px; line-height: 1.6; color: var(--text-primary); }
-  .sheet .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
-
-  /* Toast */
-  #toast {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    background: var(--text-primary);
-    color: var(--bg-surface);
-    padding: 8px 14px;
-    border-radius: var(--radius-md);
-    font-size: 12.5px;
-    font-weight: 500;
-    box-shadow: var(--shadow-lg);
-    opacity: 0;
-    transform: translateY(6px);
-    transition: opacity .2s ease, transform .2s ease;
-    pointer-events: none;
-    z-index: 200;
-  }
-  #toast.show { opacity: 1; transform: translateY(0); }
-`;
+const MODAL_TOAST_RULES = MODAL_CSS;
 
 const SEARCH_RULES = `
   /* 搜索框 */
@@ -1424,47 +1359,8 @@ export const AUTH_STYLE = [
   .tag.pub { background: var(--bg-subtle); color: var(--text-secondary); border: 1px solid var(--border-base); }
   #msg:empty, #setup-msg:empty { display: none; }
   #msg, #setup-msg { font-size: 13px; margin-top: .6rem; }
-
-  /* 弹窗（与 PAGE_STYLE 保持一致） */
-  .modal {
-    position: fixed;
-    inset: 0;
-    background: rgba(10, 12, 16, 0.4);
-    display: none;
-    align-items: flex-start;
-    justify-content: center;
-    z-index: 50;
-    padding: 40px 12px;
-    backdrop-filter: blur(3px);
-  }
-  .modal.open { display: flex; }
-  .sheet {
-    background: var(--bg-surface);
-    border-radius: var(--radius-lg);
-    width: min(480px, 100%);
-    padding: 24px;
-    max-height: calc(100vh - 80px);
-    overflow-y: auto;
-    position: relative;
-    box-shadow: var(--shadow-modal);
-    border: 1px solid var(--border-base);
-  }
-  .sheet h3 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }
-  .sheet .close-x {
-    position: absolute;
-    top: 18px;
-    right: 18px;
-    background: transparent;
-    border: none;
-    font-size: 16px;
-    color: var(--text-tertiary);
-    cursor: pointer;
-    padding: 4px 8px;
-  }
-  .sheet .close-x:hover { color: var(--text-primary); }
-  .sheet .modal-body { font-size: 14px; line-height: 1.6; color: var(--text-primary); }
-  .sheet .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 `,
+  MODAL_CSS,
   LANG_RULES,
 ].join("\n");
 

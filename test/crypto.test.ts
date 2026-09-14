@@ -17,6 +17,7 @@ import {
   decryptSecret,
   hashPassword,
   verifyPassword,
+  generatePrefixedKey,
 } from "../src/crypto/index.js";
 
 describe("@nuln/worker-kit/crypto", () => {
@@ -98,5 +99,13 @@ describe("@nuln/worker-kit/crypto", () => {
 
     expect(await verifyPassword(password, hash)).toBe(true);
     expect(await verifyPassword("WrongPassword", hash)).toBe(false);
+  });
+
+  it("generatePrefixedKey: 带有指定前缀与下划线", () => {
+    const key1 = generatePrefixedKey("push_live");
+    expect(key1.startsWith("push_live_")).toBe(true);
+
+    const key2 = generatePrefixedKey("pay_sec_");
+    expect(key2.startsWith("pay_sec_")).toBe(true);
   });
 });

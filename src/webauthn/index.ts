@@ -42,7 +42,8 @@ export {
  * COSE keys) are intentionally untouched: downstream code reads those with
  * numeric lookups and works correctly.
  */
-export function normalizeAttestationObject(b64urlAttObj: string): string {
+export function normalizeAttestationObject(b64urlAttObj: any): any {
+  if (typeof b64urlAttObj !== "string") return b64urlAttObj;
   let decoded: CBORType;
   try {
     const [value] = decodePartialCBOR(fromB64url(b64urlAttObj), 0);
@@ -114,9 +115,11 @@ export function resolveRpID(configuredRpID: string | string[], reqHost?: string)
   return validConfigured[0] || (reqHost ? reqHost.replace(/:\d+$/, "") : "localhost");
 }
 
-export function resolveExpectedRPIDs(configuredRpID: string | string[], reqHost?: string): string[] {
+export function resolveExpectedRPIDs(configuredRpID?: string | string[] | null, reqHost?: string): string[] {
   const list = new Set<string>();
-  const configuredList = Array.isArray(configuredRpID) ? configuredRpID : [configuredRpID];
+  const configuredList = Array.isArray(configuredRpID)
+    ? configuredRpID
+    : (configuredRpID ? [configuredRpID] : []);
   for (const id of configuredList) {
     if (id) list.add(id.trim());
   }

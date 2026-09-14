@@ -33,6 +33,47 @@ export interface PasskeyRecord {
   lastUsedAt?: string | number | Date;
 }
 
+/**
+ * 统一将 WebAuthn / Passkey 异常转换为标准友好的用户提示文案
+ */
+export function formatPasskeyErrorMessage(err: unknown): string {
+  if (!err) return "通行密钥验证失败";
+  const msg = typeof err === "string" ? err : (err as any)?.message || String(err);
+  const name = (err as any)?.name || "";
+
+  if (
+    name === "NotAllowedError" ||
+    msg.includes("timed out") ||
+    msg.includes("not allowed") ||
+    msg.includes("The operation either timed out or was not allowed") ||
+    msg.includes("cancelled") ||
+    msg.includes("canceled") ||
+    msg.includes("AbortError")
+  ) {
+    return "通行密钥验证已取消或超时，请重试";
+  }
+  if (msg.includes("passkey_challenge_expired") || msg.includes("expired")) {
+    return "通行密钥验证已过期，请重试";
+  }
+  if (msg.includes("passkey_not_found") || msg.includes("not found")) {
+    return "未找到匹配的通行密钥";
+  }
+  if (
+    msg.includes("passkey_authentication_failed") ||
+    msg.includes("passkey_verification_failed") ||
+    msg.includes("verification failed")
+  ) {
+    return "通行密钥身份验证失败";
+  }
+  if (msg.includes("passkey_user_mismatch")) {
+    return "通行密钥用户不匹配";
+  }
+  if (msg.includes("last_passkey")) {
+    return "至少需要保留一个 Passkey，无法删除";
+  }
+  return msg;
+}
+
 export class PasskeyService {
   constructor(protected config: WebAuthnConfig) {}
 
@@ -58,7 +99,7 @@ export class PasskeyService {
       rpName: this.config.rpName,
       rpID: effectiveRpID,
       userName: email,
-      userID: userId,
+      userID: userId as any,
       attestationType: "none",
       authenticatorSelection: {
         residentKey: "preferred",
@@ -210,7 +251,7 @@ export class PasskeyService {
       expectedRPID: expectedRPIDs,
       credential: {
         id: credRow.credential_id,
-        publicKey: pubKeyBytes,
+        publicKey: pubKeyBytes as any,
         counter: credRow.counter,
         transports: safeParseTransports(credRow.transports),
       },
@@ -232,5 +273,149 @@ export class PasskeyService {
       userId: credRow.user_id,
       credentialId: credRow.credential_id,
     };
+  }
+
+  /** 已登录用户生成绑定新 Passkey 的 Options。 */
+  async generateRegisterOptions(
+    db: D1Database,
+    userId: string,
+    userEmail: string,
+    reqHost?: string,
+  ): Promise<{ tmp: string; options: unknown }> {
+    const effectiveRpID = resolveRpID(this.config.rpID, reqHost);
+    const uIdBytes = new TextEncoder().encode(userId);
+
+    // 查询该用户已有的凭据以排除重复注册
+    const existingCreds = await db
+      .prepare("SELECT credential_id FROM passkey_credentials WHERE user_id = ?")
+      .bind(userId)
+      .all<{ credential_id: string }>();
+
+    const excludeCredentials = (existingCreds?.results || []).map((c) => ({
+      id: c.credential_id,
+      type: "public-key" as const,
+    }));
+
+    const options = await generateRegistrationOptions({
+      rpName: this.config.rpName,
+      rpID: effectiveRpID,
+      userName: userEmail,
+      userID: uIdBytes as any,
+      attestationType: "none",
+      excludeCredentials,
+      authenticatorSelection: {
+        residentKey: "preferred",
+        userVerification: "preferred",
+      },
+    });
+
+    const tmp = randomToken(16);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    await db
+      .prepare(
+        "INSERT OR REPLACE INTO passkey_challenges (id, challenge, user_id, expires_at, created_at) VALUES (?, ?, ?, ?, datetime('now'))",
+      )
+      .bind(`chal:reg:${tmp}`, options.challenge, userId, expiresAt)
+      .run();
+
+    return { tmp, options };
+  }
+
+  /** 校验并落库用户新绑定的 Passkey。 */
+  async verifyRegisterResponse(
+    db: D1Database,
+    userId: string,
+    tmp: string,
+    response: RegistrationResponseJSON,
+    pkName = "Passkey",
+    reqHost?: string,
+    reqOrigin?: string,
+  ): Promise<PasskeyRecord> {
+    const chalKey = `chal:reg:${tmp}`;
+    const row = await db
+      .prepare("SELECT challenge, user_id, expires_at FROM passkey_challenges WHERE id = ?")
+      .bind(chalKey)
+      .first<{ challenge: string; user_id: string; expires_at: string }>();
+
+    if (!row || new Date(row.expires_at).getTime() < Date.now()) {
+      throw new Error("passkey_challenge_expired");
+    }
+    if (row.user_id && row.user_id !== userId) {
+      throw new Error("passkey_user_mismatch");
+    }
+    await db.prepare("DELETE FROM passkey_challenges WHERE id = ?").bind(chalKey).run();
+
+    const expectedOrigins = resolveExpectedOrigins(this.config.origin, reqOrigin);
+    const expectedRPIDs = resolveExpectedRPIDs(this.config.rpID, reqHost);
+    const normalizedResponse: RegistrationResponseJSON = {
+      ...response,
+      response: {
+        ...response.response,
+        attestationObject: normalizeAttestationObject(response.response.attestationObject),
+      },
+    };
+
+    const verification = await verifyRegistrationResponse({
+      response: normalizedResponse,
+      expectedChallenge: row.challenge,
+      expectedOrigin: expectedOrigins,
+      expectedRPID: expectedRPIDs,
+    });
+
+    if (!verification.verified || !verification.registrationInfo) {
+      throw new Error("passkey_verification_failed");
+    }
+
+    const info = verification.registrationInfo;
+    const publicKeyB64 = toB64url(new Uint8Array(info.credential.publicKey as unknown as ArrayBuffer));
+    const passkeyId = `pk_${randomToken(12)}`;
+    const transportsJson = JSON.stringify(response.response?.transports || ["internal"]);
+    const name = pkName.trim() || "Passkey";
+
+    await db
+      .prepare(
+        "INSERT INTO passkey_credentials (id, user_id, credential_id, public_key, counter, transports, name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+      )
+      .bind(passkeyId, userId, info.credential.id, publicKeyB64, info.credential.counter, transportsJson, name)
+      .run();
+
+    return {
+      id: passkeyId,
+      userId,
+      credentialId: info.credential.id,
+      publicKey: publicKeyB64,
+      counter: info.credential.counter,
+      transports: transportsJson,
+      name,
+    };
+  }
+
+  /** 获取指定用户的所有 Passkey 列表。 */
+  async listPasskeys(db: D1Database, userId: string): Promise<Array<Omit<PasskeyRecord, "publicKey">>> {
+    const res = await db
+      .prepare(
+        "SELECT id, user_id as userId, credential_id as credentialId, counter, transports, name, aaguid, created_at as createdAt, last_used_at as lastUsedAt FROM passkey_credentials WHERE user_id = ? ORDER BY created_at DESC",
+      )
+      .bind(userId)
+      .all<Omit<PasskeyRecord, "publicKey">>();
+    return res.results || [];
+  }
+
+  /** 删除指定 Passkey。 */
+  async deletePasskey(db: D1Database, userId: string, passkeyId: string): Promise<boolean> {
+    const res = await db
+      .prepare("DELETE FROM passkey_credentials WHERE id = ? AND user_id = ?")
+      .bind(passkeyId, userId)
+      .run();
+    return (res.meta?.changes ?? 0) > 0;
+  }
+
+  /** 重命名指定 Passkey。 */
+  async renamePasskey(db: D1Database, userId: string, passkeyId: string, newName: string): Promise<boolean> {
+    const res = await db
+      .prepare("UPDATE passkey_credentials SET name = ? WHERE id = ? AND user_id = ?")
+      .bind(newName.trim() || "Passkey", passkeyId, userId)
+      .run();
+    return (res.meta?.changes ?? 0) > 0;
   }
 }

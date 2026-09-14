@@ -7,6 +7,9 @@ import {
   redirectResponse,
   normalizeBasePath,
   getClientIp,
+  extractClientMeta,
+  parsePaginationParams,
+  createDataExportResponse,
 } from "../src/http/index";
 
 describe("@nuln/worker-kit/http", () => {
@@ -63,5 +66,24 @@ describe("@nuln/worker-kit/http", () => {
     });
     expect(getClientIp(xff)).toBe("5.6.7.8");
     expect(getClientIp(new Request("https://x.test/"))).toBe("127.0.0.1");
+  });
+
+  it("extractClientMeta / parsePaginationParams / createDataExportResponse", () => {
+    const req = new Request("https://x.test/api", {
+      headers: { "CF-Connecting-IP": "8.8.8.8", "User-Agent": "Mozilla/5.0 iPhone" },
+    });
+    const meta = extractClientMeta(req);
+    expect(meta.ip).toBe("8.8.8.8");
+    expect(meta.isMobile).toBe(true);
+
+    const p1 = parsePaginationParams({ page: "2", limit: "50" });
+    expect(p1).toEqual({ page: 2, limit: 50, offset: 50 });
+
+    const pDefault = parsePaginationParams({});
+    expect(pDefault).toEqual({ page: 1, limit: 20, offset: 0 });
+
+    const exportRes = createDataExportResponse({ foo: "bar" }, "export.json");
+    expect(exportRes.status).toBe(200);
+    expect(exportRes.headers.get("Content-Disposition")).toContain("export.json");
   });
 });

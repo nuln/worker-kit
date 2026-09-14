@@ -129,6 +129,27 @@ describe("@nuln/worker-kit/ui/auth", () => {
     expect(c2).toContain("mock-csrf-token");
     expect(c2).toContain("确认登录");
   });
+
+  it("renderSetupHtml / renderLoginHtml / renderInviteHtml / renderRecoveryHtml", async () => {
+    const { renderSetupHtml, renderLoginHtml, renderInviteHtml, renderRecoveryHtml } = await import("../src/ui/auth-pages.js");
+    const setup = renderSetupHtml({ serviceName: "Tower", basePath: "/tower" });
+    expect(setup).toContain("<title>Tower</title>");
+    expect(setup).toContain("初始化超级管理员");
+
+    const login = renderLoginHtml({ serviceName: "Tower", basePath: "/tower", oidcEnabled: true });
+    expect(login).toContain("<title>Tower</title>");
+    expect(login).toContain("Passkey 快捷登录");
+    expect(login).toContain("OIDC 单点登录");
+
+    const invite = renderInviteHtml({ serviceName: "Mail", basePath: "/mail", inviteCode: "INV-123" });
+    expect(invite).toContain("<title>Mail</title>");
+    expect(invite).toContain("受邀注册");
+    expect(invite).toContain("INV-123");
+
+    const recovery = renderRecoveryHtml({ serviceName: "Flash", basePath: "/flash" });
+    expect(recovery).toContain("<title>Flash</title>");
+    expect(recovery).toContain("找回账号凭据");
+  });
 });
 
 

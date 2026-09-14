@@ -212,3 +212,14 @@ export function isSafeNextUrl(
     return false;
   }
 }
+
+/** 兼容别名：动态解析 OIDC Issuer */
+export const resolveOidcIssuer = resolveIssuer;
+
+/** 断言 SSO Origin 是否在白名单中 */
+export function assertSsoOrigin(origin: string, allowlist: string[]): boolean {
+  if (allowlist.includes("*")) return true;
+  const normalized = normalizeOrigin(origin);
+  return allowlist.map(normalizeOrigin).includes(normalized);
+}
+

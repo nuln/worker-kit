@@ -22,13 +22,61 @@ export interface ActionGroupOptions {
     avatar?: string;
   };
   showSettings?: boolean;
-  onSettingsClick?: string; // e.g. "openSettingsModal()"
+  onSettingsClick?: string;
   showLogout?: boolean;
-  onLogoutClick?: string;   // e.g. "logout()"
+  onLogoutClick?: string;
   basePath?: string;
 }
 
-/** 生成标准顶栏右侧操作区 HTML 字符串 */
+export interface GearMenuOptions {
+  user?: {
+    email?: string;
+    name?: string;
+    role?: string;
+  };
+  basePath?: string;
+  lang?: Lang;
+  onSettingsClick?: string;
+  onLogoutClick?: string;
+}
+
+/** 生成标准 5 层紧凑型 ⚙️ 设置下拉菜单 HTML (依据 SYSTEM_UNIFICATION_MASTER_SPEC) */
+export function renderGearMenuHtml(options: GearMenuOptions = {}): string {
+  const {
+    user,
+    basePath = "",
+    lang = "zh",
+    onSettingsClick = "location.href='" + (basePath || "") + "/settings'",
+    onLogoutClick = "location.href='" + (basePath || "") + "/login?logout=1'",
+  } = options;
+
+  const isEn = (lang as string) === "en-US" || lang === "en";
+  const userDisplay = user?.email || user?.name || (isEn ? "User" : "用户");
+
+  return `
+<div class="gear-wrap" id="gear-wrap">
+  <button type="button" class="gear-btn" id="gear-btn" onclick="toggleGearMenu(event)" title="${isEn ? "Settings" : "设置"}" aria-label="Settings">
+    ${SettingsIcon}
+  </button>
+  <div class="gear-menu" id="gear-menu">
+    <div class="more-user" title="${userDisplay}">${userDisplay}</div>
+    <button type="button" onclick="${onSettingsClick}">
+      <span>⚙️ ${isEn ? "Settings" : "设置"}</span>
+    </button>
+    <button type="button" id="gear-lang-btn" onclick="toggleLanguage()">
+      <span>🌐 ${isEn ? "中文" : "English"}</span>
+    </button>
+    <button type="button" id="gear-theme-btn" onclick="toggleTheme()">
+      <span>🌓 ${isEn ? "Dark Mode" : "深色模式"}</span>
+    </button>
+    <button type="button" class="danger" onclick="${onLogoutClick}">
+      <span>🚪 ${isEn ? "Logout" : "退出登录"}</span>
+    </button>
+  </div>
+</div>`;
+}
+
+/** 生成标准顶栏右侧平铺操作区 HTML 字符串 */
 export function renderActionGroupHtml(options: ActionGroupOptions = {}): string {
   const {
     lang = "zh",
@@ -100,7 +148,7 @@ export function renderActionGroupHtml(options: ActionGroupOptions = {}): string 
   return `<div class="topbar-actions">${items.join("")}</div>`;
 }
 
-/** 注入前端全局主题与多语言切换响应脚本 */
+/** 注入顶栏 ⚙️ 齿轮菜单交互、主题与多语言切换响应脚本 */
 export function clientThemeAndLangScript(defaultLang: Lang = "zh"): string {
   return `
 <script>
@@ -127,13 +175,39 @@ export function clientThemeAndLangScript(defaultLang: Lang = "zh"): string {
   }
   window.toggleTheme = function() {
     var cur = getStoredTheme();
-    var next = cur === 'auto' ? 'light' : (cur === 'light' ? 'dark' : 'auto');
+    var next = cur === 'dark' ? 'light' : 'dark';
     try { localStorage.setItem('theme', next); } catch(e){}
     applyTheme(next);
-    if (typeof showToast === 'function') {
-      showToast(next === 'auto' ? '已设为跟随系统主题' : (next === 'dark' ? '已切换为深色模式' : '已切换为浅色模式'));
+    var themeBtn = document.getElementById('gear-theme-btn');
+    if (themeBtn) {
+      themeBtn.innerHTML = '<span>🌓 ' + (next === 'dark' ? '浅色模式' : '深色模式') + '</span>';
+    }
+    if (typeof toast === 'function') {
+      toast(next === 'dark' ? '已切换为深色模式' : '已切换为浅色模式', 's');
     }
   };
+
+  window.toggleLanguage = function() {
+    var curLang = document.cookie.match(/lang=([^;]+)/)?.[1] || 'zh';
+    var nextLang = curLang.startsWith('en') ? 'zh' : 'en';
+    document.cookie = 'lang=' + nextLang + '; Path=/; Max-Age=31536000; SameSite=Lax';
+    location.reload();
+  };
+
+  window.toggleGearMenu = function(e) {
+    if (e) e.stopPropagation();
+    var menu = document.getElementById('gear-menu');
+    if (menu) menu.classList.toggle('show');
+  };
+
+  window.addEventListener('click', function(e) {
+    var wrap = document.getElementById('gear-wrap');
+    var menu = document.getElementById('gear-menu');
+    if (menu && menu.classList.contains('show') && wrap && !wrap.contains(e.target)) {
+      menu.classList.remove('show');
+    }
+  });
 })();
 </script>`;
 }
+

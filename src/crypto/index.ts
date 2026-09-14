@@ -55,12 +55,17 @@ export function safeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+export const timingSafeEqual = safeEqual;
+
 /** 生成指定字节数的密码学安全随机 Token（Base64URL 格式）。 */
 export function randomToken(bytes = 32): string {
   const buf = new Uint8Array(bytes);
   crypto.getRandomValues(buf);
   return toB64url(buf);
 }
+
+export const randomState = randomToken;
+export const generateId = (prefix?: string) => (prefix ? `${prefix}_${randomHex(16)}` : randomHex(16));
 
 /** 生成指定长度的密码学安全随机 Hex 字符串。 */
 export function randomHex(length = 32): string {
@@ -69,6 +74,13 @@ export function randomHex(length = 32): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0"))
     .join("")
     .slice(0, length);
+}
+
+/** 生成带语义前缀的安全随机 API Key / Token（如 `push_live_...`） */
+export function generatePrefixedKey(prefix: string, bytes = 24): string {
+  const cleanPrefix = prefix.replace(/_+$/, "");
+  const token = randomToken(bytes);
+  return `${cleanPrefix}_${token}`;
 }
 
 /** 生成指定字节数的 Base64URL 随机字符串。 */

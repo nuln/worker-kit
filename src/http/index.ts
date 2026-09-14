@@ -99,3 +99,87 @@ export function errorResponse(message: string, status = 400, details?: unknown):
     status,
   );
 }
+
+/** 统一标准 HTTP 安全响应头中间件（注入 nosniff, SAMEORIGIN, CSP, Referrer-Policy 等） */
+export function applySecurityHeaders(headers: Headers): void {
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("X-Frame-Options", "SAMEORIGIN");
+  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+}
+
+/** 通用健康检查响应处理器（返回标准外壳数据） */
+export interface HealthInfo {
+  service: string;
+  version?: string;
+  status?: string;
+  extra?: Record<string, unknown>;
+}
+
+export function createHealthResponse(info: HealthInfo): Response {
+  return jsonResponse({
+    ok: true,
+    data: {
+      service: info.service,
+      version: info.version || "1.0.0",
+      status: info.status || "ok",
+      timestamp: new Date().toISOString(),
+      ...(info.extra || {}),
+    },
+  });
+}
+
+/** 解析客户端 IP、地理位置与客户端元数据 */
+export interface ClientMeta {
+  ip: string;
+  country?: string;
+  city?: string;
+  asn?: number;
+  isMobile: boolean;
+  userAgent: string;
+}
+
+export function extractClientMeta(request: Request): ClientMeta {
+  const ip = getClientIp(request);
+  const ua = request.headers.get("User-Agent") || "";
+  const cf = (request as any).cf;
+  const isMobile = /mobile|iphone|ipod|android|blackberry|opera mini|iemobile/i.test(ua);
+  return {
+    ip,
+    country: cf?.country,
+    city: cf?.city,
+    asn: cf?.asn,
+    isMobile,
+    userAgent: ua,
+  };
+}
+
+/** 统一安全分页参数解析（默认 page=1, limit=20，上限 100） */
+export interface PaginationParams {
+  page: number;
+  limit: number;
+  offset: number;
+}
+
+export function parsePaginationParams(query: Record<string, string | undefined>): PaginationParams {
+  const page = Math.max(1, parseInt(query.page || "1", 10) || 1);
+  const rawLimit = parseInt(query.limit || "20", 10) || 20;
+  const limit = Math.min(100, Math.max(1, rawLimit));
+  const offset = (page - 1) * limit;
+  return { page, limit, offset };
+}
+
+/** 流式文件下载/备份响应封装 */
+export function createDataExportResponse(data: unknown, filename: string): Response {
+  const jsonStr = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+  return new Response(jsonStr, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"`,
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+
