@@ -7,7 +7,7 @@
 import { AUTH_STYLE, FAVICON_TAG } from "./styles.js";
 import { escapeHtml } from "../http/index.js";
 import { MODAL_JS } from "./modal.js";
-import { getAuthI18n, type Lang } from "./i18n.js";
+import { getAuthI18n, detectLanguage, type Lang } from "./i18n.js";
 
 function renderCapsuleHeader(serviceName: string): string {
   return `<div class="capsule-header">
@@ -245,6 +245,7 @@ export interface AuthPageContract {
   serviceName: string;
   basePath?: string;
   lang?: Lang | string;
+  request?: Request;
   options?: {
     needsSetup?: boolean;
     oidcEnabled?: boolean;
@@ -255,12 +256,13 @@ export interface AuthPageContract {
 }
 
 export function renderAuthPage(contract: AuthPageContract): string {
+  const lang = contract.lang || (contract.request ? detectLanguage(contract.request) : undefined);
   switch (contract.view) {
     case "login":
       return renderLoginHtml({
         serviceName: contract.serviceName,
         basePath: contract.basePath,
-        lang: contract.lang,
+        lang,
         needsSetup: contract.options?.needsSetup,
         oidcEnabled: contract.options?.oidcEnabled,
         next: contract.options?.next,
@@ -269,29 +271,40 @@ export function renderAuthPage(contract: AuthPageContract): string {
       return renderSetupHtml({
         serviceName: contract.serviceName,
         basePath: contract.basePath,
-        lang: contract.lang,
+        lang,
         defaultEmail: contract.options?.defaultEmail,
       });
     case "invite":
       return renderInviteHtml({
         serviceName: contract.serviceName,
         basePath: contract.basePath,
-        lang: contract.lang,
+        lang,
         inviteCode: contract.options?.inviteCode,
       });
     case "recovery":
       return renderRecoveryHtml({
         serviceName: contract.serviceName,
         basePath: contract.basePath,
-        lang: contract.lang,
+        lang,
       });
   }
+}
+
+export function authPageResponse(contract: AuthPageContract, init?: ResponseInit): Response {
+  return new Response(renderAuthPage(contract), {
+    status: init?.status ?? 200,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      ...init?.headers,
+    },
+  });
 }
 
 export interface RenderLoginOptions {
   serviceName: string;
   basePath?: string;
   lang?: Lang | string;
+  request?: Request;
   needsSetup?: boolean;
   oidcEnabled?: boolean;
   next?: string;
@@ -300,8 +313,9 @@ export interface RenderLoginOptions {
 export function renderLoginHtml(opts: RenderLoginOptions): string {
   const b = opts.basePath || "";
   const name = opts.serviceName || "Service";
-  const t = getAuthI18n(opts.lang);
-  const docLang = (opts.lang && String(opts.lang).startsWith("en")) ? "en" : "zh-CN";
+  const lang = opts.lang || (opts.request ? detectLanguage(opts.request) : undefined);
+  const t = getAuthI18n(lang);
+  const docLang = (lang && String(lang).startsWith("en")) ? "en" : "zh-CN";
   const oidcUrl = `${b}/oidc/login${opts.next ? `?next=${encodeURIComponent(opts.next)}` : ""}`;
 
   return `<!doctype html>
@@ -356,6 +370,7 @@ export interface RenderSetupOptions {
   serviceName: string;
   basePath?: string;
   lang?: Lang | string;
+  request?: Request;
   defaultEmail?: string;
 }
 
@@ -363,8 +378,9 @@ export function renderSetupHtml(opts: RenderSetupOptions): string {
   const b = opts.basePath || "";
   const name = opts.serviceName || "Service";
   const defEmail = opts.defaultEmail || "";
-  const t = getAuthI18n(opts.lang);
-  const docLang = (opts.lang && String(opts.lang).startsWith("en")) ? "en" : "zh-CN";
+  const lang = opts.lang || (opts.request ? detectLanguage(opts.request) : undefined);
+  const t = getAuthI18n(lang);
+  const docLang = (lang && String(lang).startsWith("en")) ? "en" : "zh-CN";
 
   return `<!doctype html>
 <html lang="${docLang}">
@@ -374,11 +390,11 @@ export function renderSetupHtml(opts: RenderSetupOptions): string {
   <title>${escapeHtml(name)}</title>
   ${FAVICON_TAG}
   <style>${AUTH_STYLE}</style>
-  ${WEBAUTHN_SCRIPT(b, opts.lang)}
+  ${WEBAUTHN_SCRIPT(b, lang)}
   ${THEME_SCRIPT}
 </head>
 <body>
-  ${TOP_RIGHT_TOGGLE(opts.lang)}
+  ${TOP_RIGHT_TOGGLE(lang)}
   <div class="auth-wrap">
     <div class="card">
       ${renderCapsuleHeader(name)}
@@ -404,6 +420,7 @@ export interface RenderInviteOptions {
   serviceName: string;
   basePath?: string;
   lang?: Lang | string;
+  request?: Request;
   inviteCode?: string;
 }
 
@@ -411,8 +428,9 @@ export function renderInviteHtml(opts: RenderInviteOptions): string {
   const b = opts.basePath || "";
   const name = opts.serviceName || "Service";
   const code = opts.inviteCode || "";
-  const t = getAuthI18n(opts.lang);
-  const docLang = (opts.lang && String(opts.lang).startsWith("en")) ? "en" : "zh-CN";
+  const lang = opts.lang || (opts.request ? detectLanguage(opts.request) : undefined);
+  const t = getAuthI18n(lang);
+  const docLang = (lang && String(lang).startsWith("en")) ? "en" : "zh-CN";
 
   return `<!doctype html>
 <html lang="${docLang}">
@@ -422,11 +440,11 @@ export function renderInviteHtml(opts: RenderInviteOptions): string {
   <title>${escapeHtml(name)}</title>
   ${FAVICON_TAG}
   <style>${AUTH_STYLE}</style>
-  ${WEBAUTHN_SCRIPT(b, opts.lang)}
+  ${WEBAUTHN_SCRIPT(b, lang)}
   ${THEME_SCRIPT}
 </head>
 <body>
-  ${TOP_RIGHT_TOGGLE(opts.lang)}
+  ${TOP_RIGHT_TOGGLE(lang)}
   <div class="auth-wrap">
     <div class="card">
       ${renderCapsuleHeader(name)}
@@ -460,13 +478,15 @@ export interface RenderRecoveryOptions {
   serviceName: string;
   basePath?: string;
   lang?: Lang | string;
+  request?: Request;
 }
 
 export function renderRecoveryHtml(opts: RenderRecoveryOptions): string {
   const b = opts.basePath || "";
   const name = opts.serviceName || "Service";
-  const t = getAuthI18n(opts.lang);
-  const docLang = (opts.lang && String(opts.lang).startsWith("en")) ? "en" : "zh-CN";
+  const lang = opts.lang || (opts.request ? detectLanguage(opts.request) : undefined);
+  const t = getAuthI18n(lang);
+  const docLang = (lang && String(lang).startsWith("en")) ? "en" : "zh-CN";
 
   return `<!doctype html>
 <html lang="${docLang}">
@@ -479,7 +499,7 @@ export function renderRecoveryHtml(opts: RenderRecoveryOptions): string {
   ${THEME_SCRIPT}
 </head>
 <body>
-  ${TOP_RIGHT_TOGGLE(opts.lang)}
+  ${TOP_RIGHT_TOGGLE(lang)}
   <div class="auth-wrap">
     <div class="card">
       ${renderCapsuleHeader(name)}
