@@ -9,6 +9,63 @@ import { escapeHtml } from "../http/index.js";
 import { MODAL_JS } from "./modal.js";
 import { getAuthI18n, detectLanguage, type Lang } from "./i18n.js";
 
+/**
+ * 本地开发环境统一预填默认管理员凭据（单一事实来源）
+ */
+export const DEV_ADMIN_DEFAULTS = {
+  email: "admin@nuln.net",
+  localPart: "admin",
+  name: "admin",
+  pkName: "Passkey",
+} as const;
+
+/**
+ * 判定请求是否来源于本地开发环境（localhost / 127.0.0.1 / ::1 / *.local / *.localhost）
+ */
+export function isLocalhost(reqOrHost?: Request | string | null): boolean {
+  if (!reqOrHost) return false;
+  if (typeof reqOrHost === "string") {
+    const cleanHost = reqOrHost.trim().toLowerCase().replace(/:\d+$/, "");
+    return (
+      cleanHost === "localhost" ||
+      cleanHost === "127.0.0.1" ||
+      cleanHost === "[::1]" ||
+      cleanHost === "::1" ||
+      cleanHost.endsWith(".localhost") ||
+      cleanHost.endsWith(".local")
+    );
+  }
+  if (typeof reqOrHost === "object" && "url" in reqOrHost) {
+    try {
+      const u = new URL(reqOrHost.url);
+      return isLocalhost(u.hostname);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * 获取环境自适应的初始化表单预填值：本地开发环境返回默认值，生产环境返回空字符串
+ */
+export function getDevSetupDefaults(reqOrHost?: Request | string | null): {
+  email: string;
+  localPart: string;
+  name: string;
+  pkName: string;
+  isDev: boolean;
+} {
+  const isDev = isLocalhost(reqOrHost);
+  return {
+    email: isDev ? DEV_ADMIN_DEFAULTS.email : "",
+    localPart: isDev ? DEV_ADMIN_DEFAULTS.localPart : "",
+    name: isDev ? DEV_ADMIN_DEFAULTS.name : "",
+    pkName: isDev ? DEV_ADMIN_DEFAULTS.pkName : "",
+    isDev,
+  };
+}
+
 function renderCapsuleHeader(serviceName: string): string {
   return `<div class="capsule-header">
     <div class="capsule-badge">
@@ -384,18 +441,10 @@ export interface RenderSetupOptions {
 export function renderSetupHtml(opts: RenderSetupOptions): string {
   const b = opts.basePath || "";
   const name = opts.serviceName || "Service";
-  let isLocal = false;
-  if (opts.request) {
-    try {
-      const u = new URL(opts.request.url);
-      const h = u.hostname.toLowerCase();
-      isLocal = h === "localhost" || h === "127.0.0.1" || h === "::1" || h.endsWith(".localhost") || h.endsWith(".local");
-    } catch {}
-  }
-  // 本地开发环境自动填充默认管理员邮箱与名称，生产部署时绝不填充测试数据
-  const defEmail = isLocal ? (opts.defaultEmail || "admin@nuln.net") : "";
-  const defName = isLocal ? "admin" : "";
-  const defPkName = isLocal ? "Passkey" : "";
+  const dev = getDevSetupDefaults(opts.request);
+  const defEmail = dev.isDev ? (opts.defaultEmail || dev.email) : "";
+  const defName = dev.name;
+  const defPkName = dev.pkName;
   const lang = opts.lang || (opts.request ? detectLanguage(opts.request) : undefined);
   const t = getAuthI18n(lang);
   const docLang = (lang && String(lang).startsWith("en")) ? "en" : "zh-CN";
@@ -434,10 +483,10 @@ export function renderSetupHtml(opts: RenderSetupOptions): string {
     (function(){
       if (typeof window !== 'undefined' && window.location) {
         var host = (window.location.hostname || '').toLowerCase();
-        if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host.endsWith('.localhost') || host.endsWith('.local')) {
-          var e = document.getElementById('email'); if(e && !e.value) e.value = ${JSON.stringify(opts.defaultEmail || "admin@nuln.net")};
-          var n = document.getElementById('name'); if(n && !n.value) n.value = 'admin';
-          var p = document.getElementById('pk-name'); if(p && !p.value) p.value = 'Passkey';
+        if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1' || host.endsWith('.localhost') || host.endsWith('.local')) {
+          var e = document.getElementById('email'); if(e && !e.value) e.value = ${JSON.stringify(opts.defaultEmail || DEV_ADMIN_DEFAULTS.email)};
+          var n = document.getElementById('name'); if(n && !n.value) n.value = ${JSON.stringify(DEV_ADMIN_DEFAULTS.name)};
+          var p = document.getElementById('pk-name'); if(p && !p.value) p.value = ${JSON.stringify(DEV_ADMIN_DEFAULTS.pkName)};
         }
       }
     })();

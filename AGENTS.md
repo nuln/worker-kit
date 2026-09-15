@@ -20,9 +20,8 @@
        return authPageResponse({
          view: "setup",
          serviceName: "Tower",
-         request, // Kit 会自动探测 lang（Query / Cookie / Header），无需微服务手动调用 detectLanguage
+         request, // Kit 会自动探测 lang 与本地/生产环境，本地开发自动填充 admin@nuln.net，生产环境严格留空
          basePath: "/tower",
-         options: { defaultEmail: "admin@nuln.net" },
        });
      }
      ```
