@@ -7,26 +7,33 @@
 export type Lang = "zh" | "en";
 export const DEFAULT_LANG: Lang = "zh";
 
-export function detectLanguage(request: Request): Lang {
-  const url = new URL(request.url);
-  const q = url.searchParams.get("lang");
-  if (q) {
-    if (q.startsWith("en")) return "en";
-    if (q.startsWith("zh")) return "zh";
-  }
+export function detectLanguage(request?: Request): Lang {
+  if (!request || typeof request !== "object") return DEFAULT_LANG;
+  try {
+    if (request.url) {
+      const url = new URL(request.url, "http://localhost");
+      const q = url.searchParams.get("lang");
+      if (q) {
+        if (q.startsWith("en")) return "en";
+        if (q.startsWith("zh")) return "zh";
+      }
+    }
+  } catch (_) {}
 
-  const cookie = request.headers.get("cookie") || "";
-  const match = cookie.match(/(?:^|;\s*)lang=([a-zA-Z-]+)(?:;|$)/);
-  if (match) {
-    if (match[1].startsWith("en")) return "en";
-    if (match[1].startsWith("zh")) return "zh";
-  }
+  try {
+    const cookie = request.headers?.get?.("cookie") || "";
+    const match = cookie.match(/(?:^|;\s*)lang=([a-zA-Z-]+)(?:;|$)/);
+    if (match) {
+      if (match[1].startsWith("en")) return "en";
+      if (match[1].startsWith("zh")) return "zh";
+    }
 
-  const accept = request.headers.get("accept-language") || "";
-  if (accept) {
-    if (accept.includes("zh")) return "zh";
-    if (accept.includes("en")) return "en";
-  }
+    const accept = request.headers?.get?.("accept-language") || "";
+    if (accept) {
+      if (accept.includes("zh")) return "zh";
+      if (accept.includes("en")) return "en";
+    }
+  } catch (_) {}
 
   return DEFAULT_LANG;
 }

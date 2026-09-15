@@ -29,6 +29,9 @@ const WEBAUTHN_SCRIPT = (basePath: string, lang?: string) => {
 ${MODAL_JS}
 const B = ${JSON.stringify(basePath)};
 const P = (t) => B + t;
+function alertDlg(){ if (typeof window !== 'undefined' && window.alertDlg) return window.alertDlg.apply(window, arguments); }
+function confirmDlg(){ if (typeof window !== 'undefined' && window.confirmDlg) return window.confirmDlg.apply(window, arguments); }
+function toast(){ if (typeof window !== 'undefined' && window.toast) return window.toast.apply(window, arguments); }
 function b64urlToBuf(b){ const s = atob(b.replace(/-/g,'+').replace(/_/g,'/')); const u = new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i); return u.buffer; }
 function bufToB64url(buf){ const u = new Uint8Array(buf); let s=''; for(let i=0;i<u.length;i++) s+=String.fromCharCode(u[i]); return btoa(s).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,''); }
 function setMsg(m){ const el=document.getElementById('msg'); if(el) el.textContent=m; }
