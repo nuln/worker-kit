@@ -315,10 +315,6 @@ export function renderSetupHtml(opts: RenderSetupOptions): string {
       </button>
 
       <div id="msg" class="msg"></div>
-
-      <div class="auth-links" style="justify-content:center">
-        <a href="${b}/login">返回登录</a>
-      </div>
     </div>
   </div>
 </body>
