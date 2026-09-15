@@ -159,6 +159,20 @@ describe("@nuln/worker-kit/ui/auth", () => {
     expect(aInvite).toContain("受邀注册");
     const aRecov = renderAuthPage({ view: "recovery", serviceName: "Tower", basePath: "/tower" });
     expect(aRecov).toContain("找回账号凭据");
+
+    // Local dev setup autofill
+    const localReq = new Request("http://localhost:8788/tower/setup");
+    const aSetupLocal = renderAuthPage({ view: "setup", serviceName: "Tower", basePath: "/tower", request: localReq });
+    expect(aSetupLocal).toContain('value="admin@nuln.net"');
+    expect(aSetupLocal).toContain('value="admin"');
+    expect(aSetupLocal).toContain('value="Passkey"');
+
+    // Production setup must NOT autofill test credentials
+    const prodReq = new Request("https://tower.nuln.dev/setup");
+    const aSetupProd = renderAuthPage({ view: "setup", serviceName: "Tower", basePath: "/tower", request: prodReq });
+    expect(aSetupProd).toContain('value="" autocomplete="email"');
+    expect(aSetupProd).toContain('value="" autocomplete="name"');
+    expect(aSetupProd).not.toContain('value="admin@nuln.net"');
   });
 });
 

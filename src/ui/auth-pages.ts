@@ -266,6 +266,7 @@ export function renderAuthPage(contract: AuthPageContract): string {
         serviceName: contract.serviceName,
         basePath: contract.basePath,
         lang,
+        request: contract.request,
         needsSetup: contract.options?.needsSetup,
         oidcEnabled: contract.options?.oidcEnabled,
         next: contract.options?.next,
@@ -275,6 +276,7 @@ export function renderAuthPage(contract: AuthPageContract): string {
         serviceName: contract.serviceName,
         basePath: contract.basePath,
         lang,
+        request: contract.request,
         defaultEmail: contract.options?.defaultEmail,
       });
     case "invite":
@@ -282,6 +284,7 @@ export function renderAuthPage(contract: AuthPageContract): string {
         serviceName: contract.serviceName,
         basePath: contract.basePath,
         lang,
+        request: contract.request,
         inviteCode: contract.options?.inviteCode,
       });
     case "recovery":
@@ -289,6 +292,7 @@ export function renderAuthPage(contract: AuthPageContract): string {
         serviceName: contract.serviceName,
         basePath: contract.basePath,
         lang,
+        request: contract.request,
       });
   }
 }
@@ -380,7 +384,18 @@ export interface RenderSetupOptions {
 export function renderSetupHtml(opts: RenderSetupOptions): string {
   const b = opts.basePath || "";
   const name = opts.serviceName || "Service";
-  const defEmail = opts.defaultEmail || "";
+  let isLocal = false;
+  if (opts.request) {
+    try {
+      const u = new URL(opts.request.url);
+      const h = u.hostname.toLowerCase();
+      isLocal = h === "localhost" || h === "127.0.0.1" || h === "::1" || h.endsWith(".localhost") || h.endsWith(".local");
+    } catch {}
+  }
+  // 本地开发环境自动填充默认管理员邮箱与名称，生产部署时绝不填充测试数据
+  const defEmail = isLocal ? (opts.defaultEmail || "admin@nuln.net") : "";
+  const defName = isLocal ? "admin" : "";
+  const defPkName = isLocal ? "Passkey" : "";
   const lang = opts.lang || (opts.request ? detectLanguage(opts.request) : undefined);
   const t = getAuthI18n(lang);
   const docLang = (lang && String(lang).startsWith("en")) ? "en" : "zh-CN";
@@ -404,8 +419,8 @@ export function renderSetupHtml(opts: RenderSetupOptions): string {
       <h2 style="font-size:15px;font-weight:600;margin:0 0 14px 0;color:var(--text-primary);text-align:center;letter-spacing:-0.01em">${t.setupTitle}</h2>
 
       <input id="email" type="email" placeholder="${t.adminEmailPh}" value="${escapeHtml(defEmail)}" autocomplete="email" autofocus required>
-      <input id="name" type="text" placeholder="${t.adminNamePh}" autocomplete="name">
-      <input id="pk-name" type="text" placeholder="${t.pkNamePh}" maxlength="40" autocomplete="off">
+      <input id="name" type="text" placeholder="${t.adminNamePh}" value="${escapeHtml(defName)}" autocomplete="name">
+      <input id="pk-name" type="text" placeholder="${t.pkNamePh}" value="${escapeHtml(defPkName)}" maxlength="40" autocomplete="off">
 
       <button id="setup-btn" class="btn primary" onclick="setupPasskey()" style="height:38px">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-1.5 1.5L13 10m2-4-2 2m-3-1a6.5 6.5 0 1 0 5 9.5L22 4l-2-2-4 4"/></svg>
@@ -415,6 +430,18 @@ export function renderSetupHtml(opts: RenderSetupOptions): string {
       <div id="msg" class="msg"></div>
     </div>
   </div>
+  <script>
+    (function(){
+      if (typeof window !== 'undefined' && window.location) {
+        var host = (window.location.hostname || '').toLowerCase();
+        if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host.endsWith('.localhost') || host.endsWith('.local')) {
+          var e = document.getElementById('email'); if(e && !e.value) e.value = ${JSON.stringify(opts.defaultEmail || "admin@nuln.net")};
+          var n = document.getElementById('name'); if(n && !n.value) n.value = 'admin';
+          var p = document.getElementById('pk-name'); if(p && !p.value) p.value = 'Passkey';
+        }
+      }
+    })();
+  </script>
 </body>
 </html>`;
 }
