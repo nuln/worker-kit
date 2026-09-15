@@ -100,7 +100,7 @@ describe("worker-kit SSO Client, PasskeyService, and Auth UI Pages", () => {
       basePath: "/tower",
       defaultEmail: "admin@example.com",
     });
-    expect(setupHtml).toContain("初始化超级管理员");
+    expect(setupHtml).toContain("初始化");
     expect(setupHtml).toContain("admin@example.com");
   });
 

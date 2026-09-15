@@ -134,11 +134,11 @@ describe("@nuln/worker-kit/ui/auth", () => {
     const { renderSetupHtml, renderLoginHtml, renderInviteHtml, renderRecoveryHtml } = await import("../src/ui/auth-pages.js");
     const setup = renderSetupHtml({ serviceName: "Tower", basePath: "/tower" });
     expect(setup).toContain("<title>Tower</title>");
-    expect(setup).toContain("初始化超级管理员");
+    expect(setup).toContain("初始化");
 
     const login = renderLoginHtml({ serviceName: "Tower", basePath: "/tower", oidcEnabled: true });
     expect(login).toContain("<title>Tower</title>");
-    expect(login).toContain("Passkey 快捷登录");
+    expect(login).toContain("Passkey");
     expect(login).toContain("OIDC 单点登录");
 
     const invite = renderInviteHtml({ serviceName: "Mail", basePath: "/mail", inviteCode: "INV-123" });

@@ -186,6 +186,35 @@ async function setupPasskey(){
 </script>
 `;
 
+const TOP_RIGHT_TOGGLE = `
+<div class="lang-toggle-wrap">
+  <button type="button" class="theme-toggle-btn" onclick="toggleTheme()" title="切换主题模式（浅色/深色）" aria-label="Toggle theme">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+  </button>
+</div>
+`;
+
+const THEME_SCRIPT = `
+<script>
+var __userThemeOverride = null;
+function toggleTheme(forced){
+  var sysDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  var curTheme = __userThemeOverride || (sysDark ? 'dark' : 'light');
+  var next = (forced === 'dark' || forced === 'light') ? forced : (curTheme === 'dark' ? 'light' : 'dark');
+  __userThemeOverride = next;
+  try {
+    localStorage.removeItem('theme');
+    document.documentElement.setAttribute('data-theme', next);
+  } catch(e){}
+}
+(function(){
+  try {
+    document.documentElement.removeAttribute('data-theme');
+  } catch(e){}
+})();
+</script>
+`;
+
 export interface RenderLoginOptions {
   serviceName: string;
   basePath?: string;
@@ -208,8 +237,10 @@ export function renderLoginHtml(opts: RenderLoginOptions): string {
   ${FAVICON_TAG}
   <style>${AUTH_STYLE}</style>
   ${WEBAUTHN_SCRIPT(b)}
+  ${THEME_SCRIPT}
 </head>
 <body>
+  ${TOP_RIGHT_TOGGLE}
   <div class="auth-wrap">
     <div class="card">
       ${renderCapsuleHeader(name)}
@@ -225,7 +256,7 @@ export function renderLoginHtml(opts: RenderLoginOptions): string {
 
       <button id="main-btn" class="btn primary" onclick="loginPasskey()" style="height:38px">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-1.5 1.5L13 10m2-4-2 2m-3-1a6.5 6.5 0 1 0 5 9.5L22 4l-2-2-4 4"/></svg>
-        <span>Passkey 快捷登录</span>
+        <span>Passkey</span>
       </button>
 
       ${opts.oidcEnabled ? `
@@ -265,12 +296,14 @@ export function renderSetupHtml(opts: RenderSetupOptions): string {
   ${FAVICON_TAG}
   <style>${AUTH_STYLE}</style>
   ${WEBAUTHN_SCRIPT(b)}
+  ${THEME_SCRIPT}
 </head>
 <body>
+  ${TOP_RIGHT_TOGGLE}
   <div class="auth-wrap">
     <div class="card">
       ${renderCapsuleHeader(name)}
-      <h2 style="font-size:18px;font-weight:700;margin:0 0 16px 0;color:var(--text-primary);text-align:center">初始化超级管理员</h2>
+      <h2 style="font-size:18px;font-weight:700;margin:0 0 16px 0;color:var(--text-primary);text-align:center">初始化</h2>
 
       <input id="email" type="email" placeholder="管理员邮箱" value="${escapeHtml(defEmail)}" autocomplete="email" autofocus required>
       <input id="name" type="text" placeholder="管理员名称（选填）" autocomplete="name">
@@ -278,7 +311,7 @@ export function renderSetupHtml(opts: RenderSetupOptions): string {
 
       <button id="setup-btn" class="btn primary" onclick="setupPasskey()" style="height:38px">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-1.5 1.5L13 10m2-4-2 2m-3-1a6.5 6.5 0 1 0 5 9.5L22 4l-2-2-4 4"/></svg>
-        <span>创建 Passkey 并初始化</span>
+        <span>设置</span>
       </button>
 
       <div id="msg" class="msg"></div>
@@ -312,12 +345,17 @@ export function renderInviteHtml(opts: RenderInviteOptions): string {
   ${FAVICON_TAG}
   <style>${AUTH_STYLE}</style>
   ${WEBAUTHN_SCRIPT(b)}
+  ${THEME_SCRIPT}
 </head>
 <body>
+  ${TOP_RIGHT_TOGGLE}
   <div class="auth-wrap">
     <div class="card">
       ${renderCapsuleHeader(name)}
-      <h2 style="font-size:18px;font-weight:700;margin:0 0 16px 0;color:var(--text-primary);text-align:center">受邀注册</h2>
+      <div style="text-align:center;margin-bottom:4px">
+        <h2 style="font-size:18px;font-weight:700;margin:0 0 6px 0;color:var(--text-primary)">受邀注册</h2>
+        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">使用邀请码创建 Passkey 完成注册</p>
+      </div>
 
       <input id="invite-code" type="text" placeholder="邀请码" value="${escapeHtml(code)}" ${code ? "readonly" : "autofocus"} required>
       <input id="email" type="email" placeholder="电子邮箱" required>
@@ -357,12 +395,17 @@ export function renderRecoveryHtml(opts: RenderRecoveryOptions): string {
   <title>${escapeHtml(name)}</title>
   ${FAVICON_TAG}
   <style>${AUTH_STYLE}</style>
+  ${THEME_SCRIPT}
 </head>
 <body>
+  ${TOP_RIGHT_TOGGLE}
   <div class="auth-wrap">
     <div class="card">
       ${renderCapsuleHeader(name)}
-      <h2 style="font-size:18px;font-weight:700;margin:0 0 16px 0;color:var(--text-primary);text-align:center">找回账号凭据</h2>
+      <div style="text-align:center;margin-bottom:4px">
+        <h2 style="font-size:18px;font-weight:700;margin:0 0 6px 0;color:var(--text-primary)">找回账号凭据</h2>
+        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">输入注册时绑定的邮箱以获取登录链接</p>
+      </div>
 
       <input id="email" type="email" placeholder="注册时绑定的邮箱" autofocus required>
 
