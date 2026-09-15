@@ -119,3 +119,100 @@
 1. `npm run test:kit`：验证 Kit 基础库测试（包含全页面渲染与契约断言）。
 2. `npm run test:all`：执行全微服务单测、端到端集成测试、真实网络双向增量同步测试。
 3. `npm run typecheck:all`：执行所有微服务及 Kit 的 TypeScript 零错误强类型校验。
+
+---
+
+## 9. 测试套件分类与目录结构规范 (Test Directory Categorization)
+
+所有微服务项目 (`workers/*`) 的 `test/` 目录必须严格按测试类型分层分类治理，禁止在 `test/` 根目录下无序平铺测试文件：
+
+```text
+test/
+├── helpers.ts / helpers.js       # 测试辅助工具（Mock 上下文、DB 种子、CSRF 工具等）
+├── setup.ts                      # Vitest 运行时全局 Setup / Teardown 钩子
+├── unit/                         # 1. 单元测试 (Unit Tests)：纯函数、加解密、协议解析器、独立处理器与插件
+│   └── *.test.ts / *.test.js
+├── integration/                  # 2. 集成测试 (Integration Tests)：Hono 路由端点、中间件链、D1/DO 存储、RBAC 权限
+│   └── *.test.ts / *.test.js
+├── e2e/                          # 3. 端到端测试 (E2E Tests)：全链路用户注册/登录/恢复、跨微服务联动调用
+│   └── *.test.ts / *.test.js
+└── ui/                           # 4. 前端 DOM 交互测试 (UI Tests)：页面 SSR/SPA 渲染、DOM 事件点击与状态恢复
+    └── *.test.ts / *.test.js
+```
+
+1. **`test/unit/` 单元测试**：针对独立模块/纯逻辑，不依赖完整 HTTP 请求链路或复杂的全系统上下文。
+2. **`test/integration/` 集成测试**：针对特定 API 路由、数据库事务、权限校验与中间件的协同逻辑。
+3. **`test/e2e/` 端到端测试**：覆盖多步业务闭环（如 Passkey 初始化 $\rightarrow$ 登录 $\rightarrow$ 授权），以及微服务间互联（如 OIDC $\leftrightarrow$ Mail/Tower）。
+4. **`test/ui/` 前端 DOM 测试**：针对前端页面元素存在性、按钮点击、Toast 提示、双语/主题切换、路由导航等 DOM 行为。
+
+---
+
+## 10. 微服务统一生产部署与发布流程规范 (Unified Production Deployment Workflow)
+
+所有微服务项目（`oidc`, `tower`, `mail`, `push`, `flash`, `console`, `pay`, `haeo`）基于统一的 Serverless 架构体系（Cloudflare Workers + D1 + @nuln/worker-kit），**所有微服务的生产部署流程严格遵循标准五步法**：
+
+### 10.1 标准部署五步法流水线
+
+```text
+Step 1: 基础设施配置           Step 2: 数据库初始化             Step 3: 生产密钥注入             Step 4: 服务发布上线             Step 5: 超管初始化闭环
+[Cloudflare D1 / R2 / DO] ──> [wrangler d1 execute remote] ──> [wrangler secret bulk] ───> [wrangler deploy] ───────> [首访 /setup 录入 Passkey]
+```
+
+1. **Step 1: 生产基础设施前置准备 (Infrastructure Provisioning)**
+   - 在 Cloudflare 控制台或通过 CLI 创建生产 D1 数据库：
+     ```bash
+     npx wrangler d1 create <service-db-name>
+     ```
+   - 将生成的 `database_id` 回填至对应微服务目录下的 `wrangler.jsonc` 中的 `d1_databases` 节点。
+   - 若服务依赖 R2 存储（如 `flash`, `console`）或 Durable Objects（如 `oidc`, `console`），确保相应存储桶或类绑定已在 `wrangler.jsonc` 声明。
+
+2. **Step 2: 生产数据库物理表结构对齐 (Schema Execution)**
+   - 生产数据库建表必须使用物理 `schema.sql` 脚本，严禁在线上手工建表或修改字段：
+     ```bash
+     cd <service-dir>
+     npx wrangler d1 execute <service-db-name> --remote --file=./schema.sql
+     ```
+   - 确保生产表结构与 Drizzle ORM 模型 100% 保持一致。
+
+3. **Step 3: 生产敏感密钥与配置注入 (Secrets Provisioning)**
+   - 严禁将真实生产密钥提交到 Git。在本地准备 `.dev.vars.prod`（已被 `.gitignore` 忽略）。
+   - 根目录下运行批量注入指令：
+     ```bash
+     npm run secrets:prod:<service>   # 底层执行: wrangler secret bulk .dev.vars.prod
+     ```
+   - 或按需通过 CLI 单项注入：`npx wrangler secret put <SECRET_NAME>`。
+   - **核心密钥对照**：
+     - 通用：`COOKIE_SECRET`（会话签名密钥）。
+     - OIDC：`JWT_SECRET`（Token 签名）、`ENCRYPTION_KEY`（32 字节 Hex 客户端密钥加密）。
+     - Mail / Push：`RESEND_API_KEY`、`EMAIL_API_KEY`。
+     - 灾备同步服务：`BACKUP_SYNC_SECRET`。
+
+4. **Step 4: 编译打包与生产部署 (Build & Deploy)**
+   - 根目录下运行对应微服务的发布指令：
+     ```bash
+     npm run deploy:<service>         # 例如: npm run deploy:oidc, npm run deploy:mail
+     ```
+   - 发布完成后，Cloudflare Workers 会自动完成全球边缘节点分发与 Routes / 自定义域名生效。
+
+5. **Step 5: 生产首访与超级管理员 Passkey 绑定 (First-Access Admin Setup)**
+   - 浏览器打开生产正式地址：`https://<domain>/<basePath>/setup`。
+   - **生产脱敏铁律验证**：确认页面中管理员邮箱、姓名等所有表单项**严格留空**，无任何本地测试假数据。
+   - 超级管理员现场输入真实运维邮箱与名称，点击“设置 / Setup”完成 WebAuthn / Passkey 硬件密钥注册。
+   - 首个管理员创建成功后，系统自动封锁 `/setup` 接口（后续访问直接重定向或返回 403），初始化流程闭环。
+
+---
+
+### 10.2 微服务运维与部署命令速查表 (Workspace Cheat Sheet)
+
+| 微服务名称 | 本地开发启动 | 本地数据库重置 | 生产密钥注入 | 生产发布上线 | 默认本地端口 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **OIDC** | `npm run dev:oidc` | `npm run init:oidc` | `npm run secrets:prod:oidc` | `npm run deploy:oidc` | `8787` |
+| **Tower** | `npm run dev:tower` | `npm run init:tower` | `npm run secrets:prod:tower` | `npm run deploy:tower` | `8788` |
+| **Mail** | `npm run dev:mail` | `npm run init:mail` | `npm run secrets:prod:mail` | `npm run deploy:mail` | `8789` |
+| **Push** | `npm run dev:push` | `npm run init:push` | `npm run secrets:prod:push` | `npm run deploy:push` | `8790` |
+| **Flash** | `npm run dev:flash` | `npm run init:flash` | `npm run secrets:prod:flash` | `npm run deploy:flash` | `8791` |
+| **Console** | `npm run dev:console` | `npm run init:console` | `npm run secrets:prod:console` | `npm run deploy:console` | `8792` |
+| **Pay** | `npm run dev:pay` | `npm run init:pay` | `npm run secrets:prod:pay` | `npm run deploy:pay` | `8793` |
+| **Haeo** | `npm run dev:haeo` | `npm run init:haeo` | `npm run secrets:prod:haeo` | `npm run deploy:haeo` | `8794` |
+| **全量/联调** | `npm run dev:services` | `npm run init:all` | - | - | - |
+
