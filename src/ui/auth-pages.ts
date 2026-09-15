@@ -4,97 +4,29 @@
  * 统一现代灰白极简（Charcoal Slate）Setup 与 Login 页面模板
  */
 
-import { DESIGN_TOKENS } from "./styles.js";
+import { AUTH_STYLE, FAVICON_TAG } from "./styles.js";
 import { escapeHtml } from "../http/index.js";
-import { MODAL_CSS, MODAL_JS } from "./modal.js";
+import { MODAL_JS } from "./modal.js";
 
-const FAVICON_TAG = `<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%23181b20'/%3E%3Ccircle cx='256' cy='256' r='144' fill='none' stroke='%23ffffff' stroke-width='32' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cellipse cx='256' cy='256' rx='72' ry='144' fill='none' stroke='%23ffffff' stroke-width='32' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cline x1='112' y1='256' x2='400' y2='256' stroke='%23ffffff' stroke-width='32' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">`;
+function renderCapsuleHeader(serviceName: string): string {
+  return `<div class="capsule-header">
+    <div class="capsule-badge">
+      <div class="capsule-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        </svg>
+      </div>
+      <span>${escapeHtml(serviceName)}</span>
+    </div>
+  </div>`;
+}
 
-const AUTH_STYLE = `
-${DESIGN_TOKENS}
-${MODAL_CSS}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: var(--font-sans);
-  background: var(--bg-canvas);
-  color: var(--text-primary);
-  min-height: 100vh;
-  min-height: 100dvh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  -webkit-font-smoothing: antialiased;
+function renderAuthHeader(title: string, subtitle?: string): string {
+  return `<div style="text-align:center;margin-bottom:4px">
+    <h2 style="font-size:18px;font-weight:700;margin:0 0 6px 0;color:var(--text-primary)">${escapeHtml(title)}</h2>
+    ${subtitle ? `<p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">${escapeHtml(subtitle)}</p>` : ""}
+  </div>`;
 }
-.auth-wrap { width: 100%; max-width: 380px; margin: 0 auto; }
-.card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-base);
-  border-radius: 16px;
-  box-shadow: var(--shadow-modal);
-  padding: 32px 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.brand-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 4px;
-}
-.brand-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border-subtle);
-  border-radius: 9999px;
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 40px;
-  width: 100%;
-  padding: 0 16px;
-  border-radius: 10px;
-  font-size: 13.5px;
-  font-weight: 600;
-  text-decoration: none;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.15s ease;
-  box-sizing: border-box;
-}
-.btn.primary { background: var(--primary); color: var(--primary-contrast); }
-.btn.primary:hover { background: var(--primary-hover); }
-.btn.secondary { background: var(--bg-subtle); color: var(--text-primary); border-color: var(--border-base); }
-.btn.secondary:hover { background: var(--bg-hover); }
-.btn:disabled { opacity: 0.6; cursor: not-allowed; }
-input {
-  width: 100%;
-  height: 40px;
-  padding: 0 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border-base);
-  background: var(--bg-canvas);
-  color: var(--text-primary);
-  font-size: 13.5px;
-  box-sizing: border-box;
-}
-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-ring); }
-.msg { font-size: 12px; color: var(--danger-text); text-align: center; min-height: 16px; }
-.auth-links { display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 12.5px; margin-top: 4px; }
-.auth-links a { color: var(--text-secondary); text-decoration: none; }
-.auth-links a:hover { color: var(--text-primary); text-decoration: underline; }
-`;
 
 const WEBAUTHN_SCRIPT = (basePath: string) => `
 <script>
@@ -286,17 +218,14 @@ export function renderLoginHtml(opts: RenderLoginOptions): string {
 <body>
   <div class="auth-wrap">
     <div class="card">
-      <div class="brand-header">
-        <div class="brand-badge">
-          <span>${escapeHtml(name)}</span>
-        </div>
-      </div>
+      ${renderCapsuleHeader(name)}
+      ${renderAuthHeader("安全免密登录", "支持生物识别 Passkey 与 OIDC 单点登录")}
 
       ${opts.needsSetup ? `
       <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.25);border-radius:10px;padding:12px;font-size:12.5px;text-align:center">
         <div style="font-weight:600;margin-bottom:4px;color:var(--text-primary)">✨ 系统处于未初始化状态</div>
         <div style="color:var(--text-secondary);margin-bottom:10px">首个绑定的 Passkey 将成为超级管理员</div>
-        <a href="${b}/setup" class="btn primary" style="height:34px;font-size:12.5px">立即初始化管理员</a>
+        <a href="${b}/setup" class="btn primary" style="height:34px;font-size:12.5px">立即初始化超级管理员</a>
       </div>` : ""}
 
       <button id="passkey-btn" class="btn primary" onclick="loginPasskey()">
@@ -341,19 +270,15 @@ export function renderSetupHtml(opts: RenderSetupOptions): string {
 <body>
   <div class="auth-wrap">
     <div class="card">
-      <div class="brand-header">
-        <div class="brand-badge">
-          <span>${escapeHtml(name)}</span>
-        </div>
-        <h2 style="font-size:16px;font-weight:700">初始化超级管理员</h2>
-      </div>
+      ${renderCapsuleHeader(name)}
+      ${renderAuthHeader("初始化超级管理员", "创建超级管理员账号并绑定 Master Passkey")}
 
       <input id="email" type="email" placeholder="管理员邮箱" value="${escapeHtml(defEmail)}" autofocus required>
       <input id="pk-name" type="text" placeholder="Passkey 凭据名称（如 Touch ID）" value="" required>
 
       <button id="setup-btn" class="btn primary" onclick="setupPasskey()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-1.5 1.5L13 10m2-4-2 2m-3-1a6.5 6.5 0 1 0 5 9.5L22 4l-2-2-4 4"/></svg>
-        <span>注册并绑定 Passkey</span>
+        <span>创建 Passkey 并初始化</span>
       </button>
 
       <div id="msg" class="msg"></div>
@@ -391,12 +316,8 @@ export function renderInviteHtml(opts: RenderInviteOptions): string {
 <body>
   <div class="auth-wrap">
     <div class="card">
-      <div class="brand-header">
-        <div class="brand-badge">
-          <span>${escapeHtml(name)}</span>
-        </div>
-        <h2 style="font-size:16px;font-weight:700">受邀注册</h2>
-      </div>
+      ${renderCapsuleHeader(name)}
+      ${renderAuthHeader("受邀注册", "使用邀请码创建 Passkey 完成注册")}
 
       <input id="invite-code" type="text" placeholder="邀请码" value="${escapeHtml(code)}" ${code ? "readonly" : "autofocus"} required>
       <input id="email" type="email" placeholder="电子邮箱" required>
@@ -404,7 +325,7 @@ export function renderInviteHtml(opts: RenderInviteOptions): string {
 
       <button id="setup-btn" class="btn primary" onclick="setupPasskey()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-1.5 1.5L13 10m2-4-2 2m-3-1a6.5 6.5 0 1 0 5 9.5L22 4l-2-2-4 4"/></svg>
-        <span>注册并绑定通行密钥</span>
+        <span>创建 Passkey 并注册</span>
       </button>
 
       <div id="msg" class="msg"></div>
@@ -439,12 +360,8 @@ export function renderRecoveryHtml(opts: RenderRecoveryOptions): string {
 <body>
   <div class="auth-wrap">
     <div class="card">
-      <div class="brand-header">
-        <div class="brand-badge">
-          <span>${escapeHtml(name)}</span>
-        </div>
-        <h2 style="font-size:16px;font-weight:700">找回账号凭据</h2>
-      </div>
+      ${renderCapsuleHeader(name)}
+      ${renderAuthHeader("找回账号凭据", "输入注册时绑定的邮箱以获取登录链接")}
 
       <input id="email" type="email" placeholder="注册时绑定的邮箱" autofocus required>
 
@@ -488,4 +405,5 @@ export function renderRecoveryHtml(opts: RenderRecoveryOptions): string {
 </body>
 </html>`;
 }
+
 

@@ -1107,28 +1107,28 @@ export const AUTH_STYLE = [
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
   }
-  .auth-wrap { width: 100%; max-width: 330px; margin: 0 auto; }
+  .auth-wrap { width: 100%; max-width: 380px; margin: 0 auto; box-sizing: border-box; }
   .capsule-header {
     display: flex;
     justify-content: center;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
   }
   .capsule-badge {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 4px 12px 4px 6px;
+    padding: 5px 14px 5px 6px;
     background: var(--bg-subtle);
     border: 1px solid var(--border-base);
     border-radius: var(--radius-full);
-    font-size: 13.5px;
+    font-size: 13px;
     font-weight: 650;
     color: var(--text-primary);
     user-select: none;
   }
   .capsule-icon {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     background: var(--primary);
     color: var(--primary-contrast);
@@ -1140,23 +1140,24 @@ export const AUTH_STYLE = [
     flex-shrink: 0;
   }
   .capsule-icon svg {
-    width: 12px;
-    height: 12px;
+    width: 13px;
+    height: 13px;
   }
   .card {
     background: var(--bg-surface);
     border: 1px solid var(--border-base);
-    border-radius: var(--radius-lg);
-    padding: 24px 22px 18px;
+    border-radius: 16px;
+    padding: 28px 24px;
     width: 100%;
     margin-bottom: 20px;
-    box-shadow: var(--shadow-card);
+    box-shadow: var(--shadow-modal);
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
+    gap: 14px;
   }
   .card + .card {
-    margin-top: 20px;
+    margin-top: 14px;
   }
   .client-card {
     display: flex;
@@ -1274,15 +1275,15 @@ export const AUTH_STYLE = [
   select,
   textarea {
     font: inherit;
-    font-size: 13px;
+    font-size: 13.5px;
     color: var(--text-primary);
     width: 100%;
-    height: 38px;
+    height: 40px;
     padding: 0 12px;
-    margin: 0 0 10px 0;
+    margin: 0;
     border: 1px solid var(--border-base);
-    border-radius: var(--radius-sm);
-    background: var(--bg-subtle);
+    border-radius: 10px;
+    background: var(--bg-canvas);
     box-sizing: border-box;
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   }
@@ -1294,29 +1295,29 @@ export const AUTH_STYLE = [
   textarea:focus {
     outline: none;
     background: var(--bg-surface);
-    border-color: var(--text-primary);
+    border-color: var(--primary);
     box-shadow: 0 0 0 2px var(--primary-ring);
   }
-  input::placeholder, textarea::placeholder { color: var(--text-tertiary); font-size: 12.5px; }
+  input::placeholder, textarea::placeholder { color: var(--text-tertiary); font-size: 13px; }
   label { display: block; font-size: 12px; color: var(--text-secondary); font-weight: 550; margin: 4px 0 4px; }
 
   .btn {
     font: inherit;
     font-weight: 600;
-    font-size: 13px;
+    font-size: 13.5px;
     width: 100%;
-    height: 36px;
-    padding: 0 14px;
-    margin: 4px 0;
+    height: 40px;
+    padding: 0 16px;
+    margin: 0;
     border: 1px solid var(--primary);
-    border-radius: var(--radius-sm);
+    border-radius: 10px;
     cursor: pointer;
     background: var(--primary);
     color: var(--primary-contrast);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: 8px;
     transition: var(--transition-fast);
     text-decoration: none;
     box-sizing: border-box;
