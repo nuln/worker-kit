@@ -149,6 +149,16 @@ describe("@nuln/worker-kit/ui/auth", () => {
     const recovery = renderRecoveryHtml({ serviceName: "Flash", basePath: "/flash" });
     expect(recovery).toContain("<title>Flash</title>");
     expect(recovery).toContain("找回账号凭据");
+
+    const { renderAuthPage } = await import("../src/ui/auth-pages.js");
+    const aLogin = renderAuthPage({ view: "login", serviceName: "Tower", basePath: "/tower", options: { oidcEnabled: true } });
+    expect(aLogin).toContain("Passkey");
+    const aSetup = renderAuthPage({ view: "setup", serviceName: "Tower", basePath: "/tower" });
+    expect(aSetup).toContain("初始化");
+    const aInvite = renderAuthPage({ view: "invite", serviceName: "Tower", basePath: "/tower", options: { inviteCode: "INV-1" } });
+    expect(aInvite).toContain("受邀注册");
+    const aRecov = renderAuthPage({ view: "recovery", serviceName: "Tower", basePath: "/tower" });
+    expect(aRecov).toContain("找回账号凭据");
   });
 });
 

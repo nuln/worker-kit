@@ -188,6 +188,9 @@ async function setupPasskey(){
 
 const TOP_RIGHT_TOGGLE = `
 <div class="lang-toggle-wrap">
+  <button type="button" class="lang-toggle-btn" onclick="toggleLanguage()" title="切换语言 / Switch Language" aria-label="Toggle language">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+  </button>
   <button type="button" class="theme-toggle-btn" onclick="toggleTheme()" title="切换主题模式（浅色/深色）" aria-label="Toggle theme">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
   </button>
@@ -196,6 +199,12 @@ const TOP_RIGHT_TOGGLE = `
 
 const THEME_SCRIPT = `
 <script>
+function toggleLanguage(){
+  const cur = document.cookie.match(/(?:^|;\\s*)lang=(zh|en)(?:;|$)/)?.[1] || (navigator.language?.startsWith('zh') ? 'zh' : 'en');
+  const next = cur === 'zh' ? 'en' : 'zh';
+  document.cookie = 'lang=' + next + '; Path=/; Max-Age=31536000; SameSite=Lax';
+  window.location.reload();
+}
 var __userThemeOverride = null;
 function toggleTheme(forced){
   var sysDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -214,6 +223,51 @@ function toggleTheme(forced){
 })();
 </script>
 `;
+
+export type AuthPageView = "login" | "setup" | "invite" | "recovery";
+
+export interface AuthPageContract {
+  view: AuthPageView;
+  serviceName: string;
+  basePath?: string;
+  options?: {
+    needsSetup?: boolean;
+    oidcEnabled?: boolean;
+    next?: string;
+    defaultEmail?: string;
+    inviteCode?: string;
+  };
+}
+
+export function renderAuthPage(contract: AuthPageContract): string {
+  switch (contract.view) {
+    case "login":
+      return renderLoginHtml({
+        serviceName: contract.serviceName,
+        basePath: contract.basePath,
+        needsSetup: contract.options?.needsSetup,
+        oidcEnabled: contract.options?.oidcEnabled,
+        next: contract.options?.next,
+      });
+    case "setup":
+      return renderSetupHtml({
+        serviceName: contract.serviceName,
+        basePath: contract.basePath,
+        defaultEmail: contract.options?.defaultEmail,
+      });
+    case "invite":
+      return renderInviteHtml({
+        serviceName: contract.serviceName,
+        basePath: contract.basePath,
+        inviteCode: contract.options?.inviteCode,
+      });
+    case "recovery":
+      return renderRecoveryHtml({
+        serviceName: contract.serviceName,
+        basePath: contract.basePath,
+      });
+  }
+}
 
 export interface RenderLoginOptions {
   serviceName: string;
