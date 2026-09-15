@@ -21,13 +21,6 @@ function renderCapsuleHeader(serviceName: string): string {
   </div>`;
 }
 
-function renderAuthHeader(title: string, subtitle?: string): string {
-  return `<div style="text-align:center;margin-bottom:4px">
-    <h2 style="font-size:18px;font-weight:700;margin:0 0 6px 0;color:var(--text-primary)">${escapeHtml(title)}</h2>
-    ${subtitle ? `<p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">${escapeHtml(subtitle)}</p>` : ""}
-  </div>`;
-}
-
 const WEBAUTHN_SCRIPT = (basePath: string) => `
 <script>
 ${MODAL_JS}
@@ -46,7 +39,7 @@ async function loginPasskey(){
     alertDlg(tip);
     return;
   }
-  const btn = document.getElementById('passkey-btn');
+  const btn = document.getElementById('main-btn') || document.getElementById('passkey-btn');
   const btnSpan = btn ? btn.querySelector('span') : null;
   if(btn) btn.disabled = true;
   try {
@@ -114,8 +107,8 @@ async function setupPasskey(){
     alertDlg(tip);
     return;
   }
-  const emailEl = document.getElementById('email');
-  const email = emailEl ? emailEl.value.trim() : '';
+  const email = (document.getElementById('email')?.value || '').trim();
+  const name = (document.getElementById('name')?.value || '').trim();
   const pkName = (document.getElementById('pk-name')?.value || '').trim() || 'Master Passkey';
   if(!email) {
     const tip = '请输入管理员邮箱';
@@ -131,7 +124,7 @@ async function setupPasskey(){
     const rOpt = await fetch(P('/api/setup/options'), {
       method:'POST',
       headers:{'content-type':'application/json'},
-      body: JSON.stringify({ email, name: pkName })
+      body: JSON.stringify({ email, name, pkName })
     });
     if(!rOpt.ok) {
       const e = await rOpt.json().catch(()=>({}));
@@ -152,6 +145,7 @@ async function setupPasskey(){
         tmp,
         pkName,
         email,
+        name,
         response: {
           id: cred.id,
           rawId: bufToB64url(cred.rawId),
@@ -173,7 +167,7 @@ async function setupPasskey(){
     if (!data.ok && !data.redirect) {
       throw new Error(data.error || '初始化验证失败');
     }
-    location.href = data.redirect || P('/app') || P('/');
+    location.href = data.redirect || P('/app') || P('/login') || P('/');
   } catch(e) {
     if(btn) btn.disabled = false;
     if(btnSpan) btnSpan.textContent = '重试注册并绑定 Passkey';
@@ -219,27 +213,32 @@ export function renderLoginHtml(opts: RenderLoginOptions): string {
   <div class="auth-wrap">
     <div class="card">
       ${renderCapsuleHeader(name)}
-      ${renderAuthHeader("安全免密登录", "支持生物识别 Passkey 与 OIDC 单点登录")}
 
       ${opts.needsSetup ? `
-      <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.25);border-radius:10px;padding:12px;font-size:12.5px;text-align:center">
-        <div style="font-weight:600;margin-bottom:4px;color:var(--text-primary)">✨ 系统处于未初始化状态</div>
-        <div style="color:var(--text-secondary);margin-bottom:10px">首个绑定的 Passkey 将成为超级管理员</div>
-        <a href="${b}/setup" class="btn primary" style="height:34px;font-size:12.5px">立即初始化超级管理员</a>
+      <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:var(--radius-sm);padding:10px 14px;font-size:12.5px;color:var(--text-primary);margin-bottom:14px;text-align:center">
+        <div style="font-weight:600;margin-bottom:4px;color:var(--primary-color)">✨ 系统处于未初始化状态</div>
+        <div style="color:var(--text-secondary);margin-bottom:8px">首个账号将直接成为超级管理员</div>
+        <a href="${b}/setup" class="btn primary" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;width:100%;height:32px;font-size:12.5px;text-decoration:none;box-sizing:border-box">
+          <span>立即初始化超级管理员</span>
+        </a>
       </div>` : ""}
 
-      <button id="passkey-btn" class="btn primary" onclick="loginPasskey()">
+      <button id="main-btn" class="btn primary" onclick="loginPasskey()" style="height:38px">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-1.5 1.5L13 10m2-4-2 2m-3-1a6.5 6.5 0 1 0 5 9.5L22 4l-2-2-4 4"/></svg>
         <span>Passkey 快捷登录</span>
       </button>
 
       ${opts.oidcEnabled ? `
-      <a href="${oidcUrl}" class="btn secondary">
+      <a href="${oidcUrl}" class="btn secondary" style="height:38px;margin-top:8px">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
         <span>OIDC 单点登录</span>
       </a>` : ""}
 
       <div id="msg" class="msg"></div>
+
+      <div class="auth-links"${!opts.needsSetup ? ' style="display:none"' : ' style="justify-content:center"'}>
+        ${opts.needsSetup ? `<a href="${b}/setup" style="font-weight:600">初始化超级管理员</a>` : ""}
+      </div>
     </div>
   </div>
 </body>
@@ -271,19 +270,20 @@ export function renderSetupHtml(opts: RenderSetupOptions): string {
   <div class="auth-wrap">
     <div class="card">
       ${renderCapsuleHeader(name)}
-      ${renderAuthHeader("初始化超级管理员", "创建超级管理员账号并绑定 Master Passkey")}
+      <h2 style="font-size:18px;font-weight:700;margin:0 0 16px 0;color:var(--text-primary);text-align:center">初始化超级管理员</h2>
 
-      <input id="email" type="email" placeholder="管理员邮箱" value="${escapeHtml(defEmail)}" autofocus required>
-      <input id="pk-name" type="text" placeholder="Passkey 凭据名称（如 Touch ID）" value="" required>
+      <input id="email" type="email" placeholder="管理员邮箱" value="${escapeHtml(defEmail)}" autocomplete="email" autofocus required>
+      <input id="name" type="text" placeholder="管理员名称（选填）" autocomplete="name">
+      <input id="pk-name" type="text" placeholder="Passkey 名称" maxlength="40" autocomplete="off">
 
-      <button id="setup-btn" class="btn primary" onclick="setupPasskey()">
+      <button id="setup-btn" class="btn primary" onclick="setupPasskey()" style="height:38px">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-1.5 1.5L13 10m2-4-2 2m-3-1a6.5 6.5 0 1 0 5 9.5L22 4l-2-2-4 4"/></svg>
         <span>创建 Passkey 并初始化</span>
       </button>
 
       <div id="msg" class="msg"></div>
 
-      <div class="auth-links">
+      <div class="auth-links" style="justify-content:center">
         <a href="${b}/login">返回登录</a>
       </div>
     </div>
@@ -317,20 +317,21 @@ export function renderInviteHtml(opts: RenderInviteOptions): string {
   <div class="auth-wrap">
     <div class="card">
       ${renderCapsuleHeader(name)}
-      ${renderAuthHeader("受邀注册", "使用邀请码创建 Passkey 完成注册")}
+      <h2 style="font-size:18px;font-weight:700;margin:0 0 16px 0;color:var(--text-primary);text-align:center">受邀注册</h2>
 
       <input id="invite-code" type="text" placeholder="邀请码" value="${escapeHtml(code)}" ${code ? "readonly" : "autofocus"} required>
       <input id="email" type="email" placeholder="电子邮箱" required>
-      <input id="pk-name" type="text" placeholder="凭据名称（如 Face ID / Touch ID）" required>
+      <input id="name" type="text" placeholder="显示名称（选填）">
+      <input id="pk-name" type="text" placeholder="Passkey 名称" maxlength="40">
 
-      <button id="setup-btn" class="btn primary" onclick="setupPasskey()">
+      <button id="setup-btn" class="btn primary" onclick="setupPasskey()" style="height:38px">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-1.5 1.5L13 10m2-4-2 2m-3-1a6.5 6.5 0 1 0 5 9.5L22 4l-2-2-4 4"/></svg>
         <span>创建 Passkey 并注册</span>
       </button>
 
       <div id="msg" class="msg"></div>
 
-      <div class="auth-links">
+      <div class="auth-links" style="justify-content:center">
         <a href="${b}/login">已有账号？返回登录</a>
       </div>
     </div>
@@ -361,17 +362,17 @@ export function renderRecoveryHtml(opts: RenderRecoveryOptions): string {
   <div class="auth-wrap">
     <div class="card">
       ${renderCapsuleHeader(name)}
-      ${renderAuthHeader("找回账号凭据", "输入注册时绑定的邮箱以获取登录链接")}
+      <h2 style="font-size:18px;font-weight:700;margin:0 0 16px 0;color:var(--text-primary);text-align:center">找回账号凭据</h2>
 
       <input id="email" type="email" placeholder="注册时绑定的邮箱" autofocus required>
 
-      <button id="recovery-btn" class="btn primary" onclick="sendRecoveryLink()">
+      <button id="recovery-btn" class="btn primary" onclick="sendRecoveryLink()" style="height:38px">
         <span>发送恢复邮件</span>
       </button>
 
       <div id="msg" class="msg"></div>
 
-      <div class="auth-links">
+      <div class="auth-links" style="justify-content:center">
         <a href="${b}/login">返回登录</a>
       </div>
     </div>
@@ -405,5 +406,6 @@ export function renderRecoveryHtml(opts: RenderRecoveryOptions): string {
 </body>
 </html>`;
 }
+
 
 
