@@ -7,6 +7,7 @@
 import { AUTH_STYLE, FAVICON_TAG } from "./styles.js";
 import { escapeHtml } from "../http/index.js";
 import { MODAL_JS } from "./modal.js";
+import { getAuthI18n, type Lang } from "./i18n.js";
 
 function renderCapsuleHeader(serviceName: string): string {
   return `<div class="capsule-header">
@@ -21,7 +22,9 @@ function renderCapsuleHeader(serviceName: string): string {
   </div>`;
 }
 
-const WEBAUTHN_SCRIPT = (basePath: string) => `
+const WEBAUTHN_SCRIPT = (basePath: string, lang?: string) => {
+  const t = getAuthI18n(lang);
+  return `
 <script>
 ${MODAL_JS}
 const B = ${JSON.stringify(basePath)};
@@ -34,7 +37,7 @@ function escHtml(v){ return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&l
 async function loginPasskey(){
   setMsg('');
   if (!window.isSecureContext || !navigator.credentials || !navigator.credentials.get) {
-    const tip = '当前环境不支持 Passkey 生物识别，请使用 HTTPS 或 localhost 访问';
+    const tip = ${JSON.stringify(t.noSecureCtx)};
     setMsg(tip);
     alertDlg(tip);
     return;
@@ -46,14 +49,14 @@ async function loginPasskey(){
     const rOpt = await fetch(P('/api/auth/webauthn/login/options'), { method:'POST' });
     if(!rOpt.ok) {
       const e = await rOpt.json().catch(()=>({}));
-      throw new Error(e.error || '获取登录参数失败');
+      throw new Error(e.error || ${JSON.stringify(t.noDeviceCred)});
     }
     const { tmp, options } = await rOpt.json();
     options.challenge = b64urlToBuf(options.challenge);
     if(options.allowCredentials) options.allowCredentials = options.allowCredentials.map(c=>({...c, id: b64urlToBuf(c.id)}));
 
     const cred = await navigator.credentials.get({ publicKey: options });
-    if(!cred) throw new Error('设备未返回凭据');
+    if(!cred) throw new Error(${JSON.stringify(t.noDeviceCred)});
 
     const vRes = await fetch(P('/api/auth/webauthn/login/verify'), {
       method: 'POST',
@@ -76,23 +79,23 @@ async function loginPasskey(){
 
     if(!vRes.ok) {
       const e = await vRes.json().catch(()=>({}));
-      throw new Error(e.error || 'Passkey 验证失败');
+      throw new Error(e.error || ${JSON.stringify(t.passkeyFailed)});
     }
     const data = await vRes.json();
     if (!data.ok && !data.redirect) {
-      throw new Error(data.error || 'Passkey 验证失败');
+      throw new Error(data.error || ${JSON.stringify(t.passkeyFailed)});
     }
     location.href = data.redirect || P('/app') || P('/');
   } catch(e) {
     if(btn) btn.disabled = false;
-    if(btnSpan) btnSpan.textContent = '重试 Passkey 快捷登录';
+    if(btnSpan) btnSpan.textContent = ${JSON.stringify(t.retryPasskeyLogin)};
     const msg = (e && (e.message || String(e))) || '';
     if (e && (e.name === 'NotAllowedError' || msg.includes('timed out') || msg.includes('not allowed') || msg.includes('The operation either timed out or was not allowed') || msg.includes('cancelled') || msg.includes('canceled') || msg.includes('AbortError'))) {
-      const err = '通行密钥验证已取消或超时，请重试';
+      const err = ${JSON.stringify(t.passkeyCanceled)};
       setMsg(err);
       alertDlg(err);
     } else {
-      const err = 'Passkey 快捷登录失败：' + (msg || '设备未返回凭据');
+      const err = ${JSON.stringify(t.passkeyFailed)} + (msg || ${JSON.stringify(t.noDeviceCred)});
       setMsg(err);
       alertDlg(err);
     }
@@ -102,7 +105,7 @@ async function loginPasskey(){
 async function setupPasskey(){
   setMsg('');
   if (!window.isSecureContext || !navigator.credentials || !navigator.credentials.create) {
-    const tip = '当前环境不支持 Passkey 生物识别，请使用 HTTPS 或 localhost 访问';
+    const tip = ${JSON.stringify(t.noSecureCtx)};
     setMsg(tip);
     alertDlg(tip);
     return;
@@ -111,7 +114,7 @@ async function setupPasskey(){
   const name = (document.getElementById('name')?.value || '').trim();
   const pkName = (document.getElementById('pk-name')?.value || '').trim() || 'Master Passkey';
   if(!email) {
-    const tip = '请输入管理员邮箱';
+    const tip = ${JSON.stringify(t.inputEmailTip)};
     setMsg(tip);
     alertDlg(tip);
     return;
@@ -136,7 +139,7 @@ async function setupPasskey(){
     if(options.excludeCredentials) options.excludeCredentials = options.excludeCredentials.map(c=>({...c, id: b64urlToBuf(c.id)}));
 
     const cred = await navigator.credentials.create({ publicKey: options });
-    if(!cred) throw new Error('设备未返回凭据');
+    if(!cred) throw new Error(${JSON.stringify(t.noDeviceCred)});
 
     const vRes = await fetch(P('/api/setup/verify'), {
       method: 'POST',
@@ -170,14 +173,15 @@ async function setupPasskey(){
     location.href = data.redirect || P('/app') || P('/login') || P('/');
   } catch(e) {
     if(btn) btn.disabled = false;
-    if(btnSpan) btnSpan.textContent = '重试注册并绑定 Passkey';
+    if(btnSpan) btnSpan.textContent = ${JSON.stringify(t.retryPasskeySetup)};
     const msg = (e && (e.message || String(e))) || '';
     if (e && (e.name === 'NotAllowedError' || msg.includes('timed out') || msg.includes('not allowed') || msg.includes('The operation either timed out or was not allowed') || msg.includes('cancelled') || msg.includes('canceled') || msg.includes('AbortError'))) {
-      const err = '通行密钥验证已取消或超时，请重试';
+      const err = ${JSON.stringify(t.passkeyCanceled)};
       setMsg(err);
       alertDlg(err);
     } else {
-      const err = 'Passkey 绑定未完成：' + (msg || '设备未返回凭据') + '。必须成功绑定 Passkey 才能完成站点初始化。';
+      const tpl = ${JSON.stringify(t.passkeySetupFailed)};
+      const err = tpl.replace('{msg}', msg || ${JSON.stringify(t.noDeviceCred)});
       setMsg(err);
       alertDlg(err);
     }
@@ -185,17 +189,21 @@ async function setupPasskey(){
 }
 </script>
 `;
+};
 
-const TOP_RIGHT_TOGGLE = `
+const TOP_RIGHT_TOGGLE = (lang?: string) => {
+  const t = getAuthI18n(lang);
+  return `
 <div class="lang-toggle-wrap">
-  <button type="button" class="lang-toggle-btn" onclick="toggleLanguage()" title="切换语言 / Switch Language" aria-label="Toggle language">
+  <button type="button" class="lang-toggle-btn" onclick="toggleLanguage()" title="${t.langToggleTitle}" aria-label="Toggle language">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
   </button>
-  <button type="button" class="theme-toggle-btn" onclick="toggleTheme()" title="切换主题模式（浅色/深色）" aria-label="Toggle theme">
+  <button type="button" class="theme-toggle-btn" onclick="toggleTheme()" title="${t.themeToggleTitle}" aria-label="Toggle theme">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
   </button>
 </div>
 `;
+};
 
 const THEME_SCRIPT = `
 <script>
@@ -230,6 +238,7 @@ export interface AuthPageContract {
   view: AuthPageView;
   serviceName: string;
   basePath?: string;
+  lang?: Lang | string;
   options?: {
     needsSetup?: boolean;
     oidcEnabled?: boolean;
@@ -245,6 +254,7 @@ export function renderAuthPage(contract: AuthPageContract): string {
       return renderLoginHtml({
         serviceName: contract.serviceName,
         basePath: contract.basePath,
+        lang: contract.lang,
         needsSetup: contract.options?.needsSetup,
         oidcEnabled: contract.options?.oidcEnabled,
         next: contract.options?.next,
@@ -253,18 +263,21 @@ export function renderAuthPage(contract: AuthPageContract): string {
       return renderSetupHtml({
         serviceName: contract.serviceName,
         basePath: contract.basePath,
+        lang: contract.lang,
         defaultEmail: contract.options?.defaultEmail,
       });
     case "invite":
       return renderInviteHtml({
         serviceName: contract.serviceName,
         basePath: contract.basePath,
+        lang: contract.lang,
         inviteCode: contract.options?.inviteCode,
       });
     case "recovery":
       return renderRecoveryHtml({
         serviceName: contract.serviceName,
         basePath: contract.basePath,
+        lang: contract.lang,
       });
   }
 }
@@ -272,6 +285,7 @@ export function renderAuthPage(contract: AuthPageContract): string {
 export interface RenderLoginOptions {
   serviceName: string;
   basePath?: string;
+  lang?: Lang | string;
   needsSetup?: boolean;
   oidcEnabled?: boolean;
   next?: string;
@@ -280,49 +294,51 @@ export interface RenderLoginOptions {
 export function renderLoginHtml(opts: RenderLoginOptions): string {
   const b = opts.basePath || "";
   const name = opts.serviceName || "Service";
+  const t = getAuthI18n(opts.lang);
+  const docLang = (opts.lang && String(opts.lang).startsWith("en")) ? "en" : "zh-CN";
   const oidcUrl = `${b}/oidc/login${opts.next ? `?next=${encodeURIComponent(opts.next)}` : ""}`;
 
   return `<!doctype html>
-<html lang="zh-CN">
+<html lang="${docLang}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>${escapeHtml(name)}</title>
   ${FAVICON_TAG}
   <style>${AUTH_STYLE}</style>
-  ${WEBAUTHN_SCRIPT(b)}
+  ${WEBAUTHN_SCRIPT(b, opts.lang)}
   ${THEME_SCRIPT}
 </head>
 <body>
-  ${TOP_RIGHT_TOGGLE}
+  ${TOP_RIGHT_TOGGLE(opts.lang)}
   <div class="auth-wrap">
     <div class="card">
       ${renderCapsuleHeader(name)}
 
       ${opts.needsSetup ? `
       <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:var(--radius-sm);padding:10px 14px;font-size:12.5px;color:var(--text-primary);margin-bottom:14px;text-align:center">
-        <div style="font-weight:600;margin-bottom:4px;color:var(--primary-color)">✨ 系统处于未初始化状态</div>
-        <div style="color:var(--text-secondary);margin-bottom:8px">首个账号将直接成为超级管理员</div>
+        <div style="font-weight:600;margin-bottom:4px;color:var(--primary-color)">${t.uninitTitle}</div>
+        <div style="color:var(--text-secondary);margin-bottom:8px">${t.uninitSub}</div>
         <a href="${b}/setup" class="btn primary" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;width:100%;height:32px;font-size:12.5px;text-decoration:none;box-sizing:border-box">
-          <span>立即初始化超级管理员</span>
+          <span>${t.uninitBtn}</span>
         </a>
       </div>` : ""}
 
       <button id="main-btn" class="btn primary" onclick="loginPasskey()" style="height:38px">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-1.5 1.5L13 10m2-4-2 2m-3-1a6.5 6.5 0 1 0 5 9.5L22 4l-2-2-4 4"/></svg>
-        <span>Passkey</span>
+        <span>${t.passkeyLogin}</span>
       </button>
 
       ${opts.oidcEnabled ? `
       <a href="${oidcUrl}" class="btn secondary" style="height:38px;margin-top:8px">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-        <span>OIDC 单点登录</span>
+        <span>${t.oidcLogin}</span>
       </a>` : ""}
 
       <div id="msg" class="msg"></div>
 
       <div class="auth-links"${!opts.needsSetup ? ' style="display:none"' : ' style="justify-content:center"'}>
-        ${opts.needsSetup ? `<a href="${b}/setup" style="font-weight:600">初始化超级管理员</a>` : ""}
+        ${opts.needsSetup ? `<a href="${b}/setup" style="font-weight:600">${t.setupTitle}</a>` : ""}
       </div>
     </div>
   </div>
@@ -333,6 +349,7 @@ export function renderLoginHtml(opts: RenderLoginOptions): string {
 export interface RenderSetupOptions {
   serviceName: string;
   basePath?: string;
+  lang?: Lang | string;
   defaultEmail?: string;
 }
 
@@ -340,32 +357,34 @@ export function renderSetupHtml(opts: RenderSetupOptions): string {
   const b = opts.basePath || "";
   const name = opts.serviceName || "Service";
   const defEmail = opts.defaultEmail || "";
+  const t = getAuthI18n(opts.lang);
+  const docLang = (opts.lang && String(opts.lang).startsWith("en")) ? "en" : "zh-CN";
 
   return `<!doctype html>
-<html lang="zh-CN">
+<html lang="${docLang}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>${escapeHtml(name)}</title>
   ${FAVICON_TAG}
   <style>${AUTH_STYLE}</style>
-  ${WEBAUTHN_SCRIPT(b)}
+  ${WEBAUTHN_SCRIPT(b, opts.lang)}
   ${THEME_SCRIPT}
 </head>
 <body>
-  ${TOP_RIGHT_TOGGLE}
+  ${TOP_RIGHT_TOGGLE(opts.lang)}
   <div class="auth-wrap">
     <div class="card">
       ${renderCapsuleHeader(name)}
-      <h2 style="font-size:18px;font-weight:700;margin:0 0 16px 0;color:var(--text-primary);text-align:center">初始化</h2>
+      <h2 style="font-size:15px;font-weight:600;margin:0 0 14px 0;color:var(--text-primary);text-align:center;letter-spacing:-0.01em">${t.setupTitle}</h2>
 
-      <input id="email" type="email" placeholder="管理员邮箱" value="${escapeHtml(defEmail)}" autocomplete="email" autofocus required>
-      <input id="name" type="text" placeholder="管理员名称（选填）" autocomplete="name">
-      <input id="pk-name" type="text" placeholder="Passkey 名称" maxlength="40" autocomplete="off">
+      <input id="email" type="email" placeholder="${t.adminEmailPh}" value="${escapeHtml(defEmail)}" autocomplete="email" autofocus required>
+      <input id="name" type="text" placeholder="${t.adminNamePh}" autocomplete="name">
+      <input id="pk-name" type="text" placeholder="${t.pkNamePh}" maxlength="40" autocomplete="off">
 
       <button id="setup-btn" class="btn primary" onclick="setupPasskey()" style="height:38px">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-1.5 1.5L13 10m2-4-2 2m-3-1a6.5 6.5 0 1 0 5 9.5L22 4l-2-2-4 4"/></svg>
-        <span>设置</span>
+        <span>${t.setupBtn}</span>
       </button>
 
       <div id="msg" class="msg"></div>
@@ -378,6 +397,7 @@ export function renderSetupHtml(opts: RenderSetupOptions): string {
 export interface RenderInviteOptions {
   serviceName: string;
   basePath?: string;
+  lang?: Lang | string;
   inviteCode?: string;
 }
 
@@ -385,42 +405,44 @@ export function renderInviteHtml(opts: RenderInviteOptions): string {
   const b = opts.basePath || "";
   const name = opts.serviceName || "Service";
   const code = opts.inviteCode || "";
+  const t = getAuthI18n(opts.lang);
+  const docLang = (opts.lang && String(opts.lang).startsWith("en")) ? "en" : "zh-CN";
 
   return `<!doctype html>
-<html lang="zh-CN">
+<html lang="${docLang}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>${escapeHtml(name)}</title>
   ${FAVICON_TAG}
   <style>${AUTH_STYLE}</style>
-  ${WEBAUTHN_SCRIPT(b)}
+  ${WEBAUTHN_SCRIPT(b, opts.lang)}
   ${THEME_SCRIPT}
 </head>
 <body>
-  ${TOP_RIGHT_TOGGLE}
+  ${TOP_RIGHT_TOGGLE(opts.lang)}
   <div class="auth-wrap">
     <div class="card">
       ${renderCapsuleHeader(name)}
       <div style="text-align:center;margin-bottom:4px">
-        <h2 style="font-size:18px;font-weight:700;margin:0 0 6px 0;color:var(--text-primary)">受邀注册</h2>
-        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">使用邀请码创建 Passkey 完成注册</p>
+        <h2 style="font-size:15px;font-weight:600;margin:0 0 4px 0;color:var(--text-primary)">${t.inviteTitle}</h2>
+        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">${t.inviteSub}</p>
       </div>
 
-      <input id="invite-code" type="text" placeholder="邀请码" value="${escapeHtml(code)}" ${code ? "readonly" : "autofocus"} required>
-      <input id="email" type="email" placeholder="电子邮箱" required>
-      <input id="name" type="text" placeholder="显示名称（选填）">
-      <input id="pk-name" type="text" placeholder="Passkey 名称" maxlength="40">
+      <input id="invite-code" type="text" placeholder="${t.inviteCodePh}" value="${escapeHtml(code)}" ${code ? "readonly" : "autofocus"} required>
+      <input id="email" type="email" placeholder="${t.emailPh}" required>
+      <input id="name" type="text" placeholder="${t.displayNamePh}">
+      <input id="pk-name" type="text" placeholder="${t.pkNamePh}" maxlength="40">
 
       <button id="setup-btn" class="btn primary" onclick="setupPasskey()" style="height:38px">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-1.5 1.5L13 10m2-4-2 2m-3-1a6.5 6.5 0 1 0 5 9.5L22 4l-2-2-4 4"/></svg>
-        <span>创建 Passkey 并注册</span>
+        <span>${t.pkRegisterBtn}</span>
       </button>
 
       <div id="msg" class="msg"></div>
 
       <div class="auth-links" style="justify-content:center">
-        <a href="${b}/login">已有账号？返回登录</a>
+        <a href="${b}/login">${t.haveAccount}</a>
       </div>
     </div>
   </div>
@@ -431,14 +453,17 @@ export function renderInviteHtml(opts: RenderInviteOptions): string {
 export interface RenderRecoveryOptions {
   serviceName: string;
   basePath?: string;
+  lang?: Lang | string;
 }
 
 export function renderRecoveryHtml(opts: RenderRecoveryOptions): string {
   const b = opts.basePath || "";
   const name = opts.serviceName || "Service";
+  const t = getAuthI18n(opts.lang);
+  const docLang = (opts.lang && String(opts.lang).startsWith("en")) ? "en" : "zh-CN";
 
   return `<!doctype html>
-<html lang="zh-CN">
+<html lang="${docLang}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -448,25 +473,25 @@ export function renderRecoveryHtml(opts: RenderRecoveryOptions): string {
   ${THEME_SCRIPT}
 </head>
 <body>
-  ${TOP_RIGHT_TOGGLE}
+  ${TOP_RIGHT_TOGGLE(opts.lang)}
   <div class="auth-wrap">
     <div class="card">
       ${renderCapsuleHeader(name)}
       <div style="text-align:center;margin-bottom:4px">
-        <h2 style="font-size:18px;font-weight:700;margin:0 0 6px 0;color:var(--text-primary)">找回账号凭据</h2>
-        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">输入注册时绑定的邮箱以获取登录链接</p>
+        <h2 style="font-size:15px;font-weight:600;margin:0 0 4px 0;color:var(--text-primary)">${t.recoveryTitle}</h2>
+        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">${t.recoverySub}</p>
       </div>
 
-      <input id="email" type="email" placeholder="注册时绑定的邮箱" autofocus required>
+      <input id="email" type="email" placeholder="${t.recoveryEmailPh}" autofocus required>
 
       <button id="recovery-btn" class="btn primary" onclick="sendRecoveryLink()" style="height:38px">
-        <span>发送恢复邮件</span>
+        <span>${t.recoveryBtn}</span>
       </button>
 
       <div id="msg" class="msg"></div>
 
       <div class="auth-links" style="justify-content:center">
-        <a href="${b}/login">返回登录</a>
+        <a href="${b}/login">${t.backToLogin}</a>
       </div>
     </div>
   </div>
