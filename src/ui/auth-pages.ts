@@ -208,10 +208,16 @@ const TOP_RIGHT_TOGGLE = (lang?: string) => {
 const THEME_SCRIPT = `
 <script>
 function toggleLanguage(){
-  const cur = document.cookie.match(/(?:^|;\\s*)lang=(zh|en)(?:;|$)/)?.[1] || (navigator.language?.startsWith('zh') ? 'zh' : 'en');
-  const next = cur === 'zh' ? 'en' : 'zh';
+  const cur = document.cookie.match(/(?:^|;\\s*)lang=([a-zA-Z-]+)(?:;|$)/)?.[1] || (navigator.language?.startsWith('zh') ? 'zh' : 'en');
+  const next = cur.startsWith('zh') ? 'en' : 'zh';
   document.cookie = 'lang=' + next + '; Path=/; Max-Age=31536000; SameSite=Lax';
-  window.location.reload();
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set('lang', next);
+    window.location.href = url.toString();
+  } catch(e) {
+    window.location.reload();
+  }
 }
 var __userThemeOverride = null;
 function toggleTheme(forced){

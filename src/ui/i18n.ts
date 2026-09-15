@@ -10,28 +10,39 @@ export const DEFAULT_LANG: Lang = "zh";
 export function detectLanguage(request: Request): Lang {
   const url = new URL(request.url);
   const q = url.searchParams.get("lang");
-  if (q === "zh" || q === "en") return q;
+  if (q) {
+    if (q.startsWith("en")) return "en";
+    if (q.startsWith("zh")) return "zh";
+  }
 
   const cookie = request.headers.get("cookie") || "";
-  const match = cookie.match(/(?:^|;\s*)lang=(zh|en)(?:;|$)/);
-  if (match) return match[1] as Lang;
+  const match = cookie.match(/(?:^|;\s*)lang=([a-zA-Z-]+)(?:;|$)/);
+  if (match) {
+    if (match[1].startsWith("en")) return "en";
+    if (match[1].startsWith("zh")) return "zh";
+  }
 
   const accept = request.headers.get("accept-language") || "";
-  if (accept.includes("zh")) return "zh";
-  return "en";
+  if (accept) {
+    if (accept.includes("zh")) return "zh";
+    if (accept.includes("en")) return "en";
+  }
+
+  return DEFAULT_LANG;
 }
 
 export function handleLangParam(request: Request, redirectPath = "/"): Response | null {
   const url = new URL(request.url);
   const lang = url.searchParams.get("lang");
-  if (lang === "zh" || lang === "en") {
+  if (lang) {
+    const norm = lang.startsWith("en") ? "en" : "zh";
     url.searchParams.delete("lang");
     const target = url.pathname + (url.search ? url.search : "");
     return new Response(null, {
       status: 302,
       headers: {
         Location: target || redirectPath,
-        "Set-Cookie": `lang=${lang}; Path=/; Max-Age=31536000; SameSite=Lax`,
+        "Set-Cookie": `lang=${norm}; Path=/; Max-Age=31536000; SameSite=Lax`,
       },
     });
   }
