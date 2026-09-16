@@ -145,7 +145,7 @@ async function loginPasskey(){
     if (!data.ok && !data.redirect) {
       throw new Error(data.error || ${JSON.stringify(t.passkeyFailed)});
     }
-    location.href = data.redirect || P('/app') || P('/');
+    location.href = data.redirect || P('/');
   } catch(e) {
     if(btn) btn.disabled = false;
     if(btnSpan) btnSpan.textContent = ${JSON.stringify(t.retryPasskeyLogin)};
@@ -230,7 +230,7 @@ async function setupPasskey(){
     if (!data.ok && !data.redirect) {
       throw new Error(data.error || '初始化验证失败');
     }
-    location.href = data.redirect || P('/app') || P('/login') || P('/');
+    location.href = data.redirect || P('/');
   } catch(e) {
     if(btn) btn.disabled = false;
     if(btnSpan) btnSpan.textContent = ${JSON.stringify(t.retryPasskeySetup)};
