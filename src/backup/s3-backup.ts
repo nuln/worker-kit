@@ -1,7 +1,7 @@
 /**
  * @nuln/worker-kit/backup/s3-backup
  *
- * 一站式定时 S3 增量备份、水位线跟踪与自动化增量链极简恢复引擎
+ * 一站式定时 S3 增量备份、基线探测、水位线跟踪与多模式精准恢复引擎
  */
 
 import { S3Client } from "../s3/client.js";
@@ -14,13 +14,143 @@ import type {
   ScheduledIncrementalBackupResult,
   WatermarkState,
   S3BackupFileSummary,
+  BackupStatusResult,
   IncrementalRestoreOptions,
   IncrementalRestoreResult,
   IncrementalBackupBundle,
 } from "./types.js";
 
 /**
- * 执行定时 S3 纯增量备份（自动维护 S3 水位线与零变动极速跳过）
+ * 探测 S3 上是否存在首次全量基线备份
+ */
+export async function checkBaselineExistsOnS3(options: {
+  s3: S3ClientConfig;
+  serviceName: string;
+  keyPrefix?: string;
+}): Promise<{ hasBaseline: boolean; baselineKey?: string; baselineTime?: string }> {
+  const { serviceName, s3: s3Config } = options;
+  const prefix = (options.keyPrefix || "backups/").replace(/\/+$/, "") + "/";
+  const s3Client = new S3Client(s3Config);
+
+  try {
+    const listRes = await s3Client.listObjects({
+      prefix: `${prefix}${serviceName}/full/`,
+    });
+
+    const fullObjects = listRes.objects.filter((obj) => obj.key.endsWith(".json"));
+    if (fullObjects.length > 0) {
+      // 按时间倒序，获取最新一份全量基线
+      fullObjects.sort((a, b) => (b.lastModified || "").localeCompare(a.lastModified || ""));
+      const latest = fullObjects[0];
+      return {
+        hasBaseline: true,
+        baselineKey: latest.key,
+        baselineTime: latest.lastModified,
+      };
+    }
+  } catch (err: any) {
+    console.warn(`[BackupS3] Failed to check baseline for "${serviceName}":`, err.message);
+  }
+
+  return { hasBaseline: false };
+}
+
+/**
+ * 初始化执行首次全量基线备份（若已存在基线则安全拦截）
+ */
+export async function initFullBaselineBackup(options: {
+  db: any;
+  serviceName: string;
+  s3: S3ClientConfig;
+  keyPrefix?: string;
+  staticTables?: string[];
+  includeTables?: string[];
+  excludeTables?: string[];
+}): Promise<ScheduledS3BackupResult> {
+  const { db, serviceName, s3: s3Config } = options;
+  const prefix = (options.keyPrefix || "backups/").replace(/\/+$/, "") + "/";
+
+  // 1. 先检查是否已存在基线
+  const baselineStatus = await checkBaselineExistsOnS3({ s3: s3Config, serviceName, keyPrefix: options.keyPrefix });
+  if (baselineStatus.hasBaseline) {
+    throw new Error(`Baseline backup already exists on S3 for "${serviceName}" at ${baselineStatus.baselineKey}`);
+  }
+
+  // 2. 执行全量导出
+  const result = await performScheduledS3Backup({
+    db,
+    serviceName,
+    s3: s3Config,
+    keyPrefix: options.keyPrefix,
+    exportOptions: {
+      includeTables: options.includeTables,
+      excludeTables: options.excludeTables,
+    },
+  });
+
+  // 3. 同时初始化写入 S3 水位线文件
+  const s3Client = new S3Client(s3Config);
+  const watermarkKey = `${prefix}${serviceName}/latest_watermark.json`;
+  const watermarkState: WatermarkState = {
+    service: serviceName,
+    lastWatermark: Date.now(),
+    lastBackupKey: result.uploadedKey,
+    lastBackupTime: new Date().toISOString(),
+    totalChangedRows: 0,
+    checksum: result.checksum,
+  };
+  await s3Client.putObject(watermarkKey, JSON.stringify(watermarkState, null, 2), {
+    contentType: "application/json",
+  });
+
+  return result;
+}
+
+/**
+ * 获取备份系统整体运行状态（用于管理后台展示与按钮状态控制）
+ */
+export async function getBackupStatusFromS3(options: {
+  s3: S3ClientConfig;
+  serviceName: string;
+  keyPrefix?: string;
+  intervalHours?: number;
+}): Promise<BackupStatusResult> {
+  const { serviceName, s3: s3Config } = options;
+  const prefix = (options.keyPrefix || "backups/").replace(/\/+$/, "") + "/";
+  const intervalHours = options.intervalHours ?? 24;
+  const s3Client = new S3Client(s3Config);
+
+  const baseline = await checkBaselineExistsOnS3({ s3: s3Config, serviceName, keyPrefix: options.keyPrefix });
+  const allBackups = await listIncrementalBackupsFromS3({ s3: s3Config, serviceName, keyPrefix: options.keyPrefix });
+
+  let latestWatermark: number | undefined;
+  let latestBackupTime: string | undefined;
+
+  try {
+    const watermarkObj = await s3Client.getObject(`${prefix}${serviceName}/latest_watermark.json`);
+    if (watermarkObj) {
+      const state: WatermarkState = JSON.parse(await watermarkObj.text());
+      latestWatermark = state.lastWatermark;
+      latestBackupTime = state.lastBackupTime;
+    }
+  } catch {}
+
+  const autoBackupEnabled = Boolean(s3Config.endpoint && s3Config.bucket && s3Config.accessKeyId);
+
+  return {
+    hasBaseline: baseline.hasBaseline,
+    baselineKey: baseline.baselineKey,
+    baselineTime: baseline.baselineTime,
+    latestWatermark,
+    latestBackupTime,
+    intervalHours,
+    autoBackupEnabled,
+    totalBackupsCount: allBackups.length,
+  };
+}
+
+/**
+ * 执行定时 S3 纯增量备份（支持时间间隔动态节流、水位线追踪与零变动极速跳过）
  */
 export async function performScheduledIncrementalBackup(
   options: ScheduledIncrementalBackupOptions
@@ -29,6 +159,7 @@ export async function performScheduledIncrementalBackup(
   const { db, serviceName, s3: s3Config } = options;
   const prefix = (options.keyPrefix || "backups/").replace(/\/+$/, "") + "/";
   const skipZeroChanges = options.skipZeroChanges ?? true;
+  const intervalHours = options.intervalHours ?? 0;
   const retentionDays = options.retentionDays ?? 30;
   const maxBackups = options.maxBackups ?? 200;
 
@@ -56,9 +187,30 @@ export async function performScheduledIncrementalBackup(
     sinceTimestamp = 0;
   }
 
-  const untilTimestamp = Date.now();
+  const now = Date.now();
 
-  // 2. 抽取 D1 增量数据
+  // 2. 检查备份时间间隔节流 (Interval Throttling)
+  if (intervalHours > 0 && sinceTimestamp > 0) {
+    const elapsedMs = now - sinceTimestamp;
+    const requiredIntervalMs = intervalHours * 3600 * 1000;
+    if (elapsedMs < requiredIntervalMs) {
+      return {
+        success: true,
+        skipped: true,
+        skipReason: "interval_not_reached",
+        bundleSize: 0,
+        totalChangedRows: 0,
+        sinceTimestamp,
+        untilTimestamp: now,
+        deletedKeys: [],
+        durationMs: Date.now() - startTime,
+      };
+    }
+  }
+
+  const untilTimestamp = now;
+
+  // 3. 抽取 D1 增量数据
   const bundle = await exportD1Incremental(db, {
     serviceName,
     sinceTimestamp,
@@ -68,11 +220,12 @@ export async function performScheduledIncrementalBackup(
     excludeTables: options.excludeTables,
   });
 
-  // 3. 零变动跳过优化 (在非首次且 0 变动时直接跳过上传)
+  // 4. 零变动跳过优化 (在非首次且 0 变动时直接跳过上传)
   if (sinceTimestamp > 0 && bundle.totalChangedRows === 0 && skipZeroChanges) {
     return {
       success: true,
       skipped: true,
+      skipReason: "zero_changes",
       bundleSize: 0,
       totalChangedRows: 0,
       sinceTimestamp,
@@ -85,11 +238,11 @@ export async function performScheduledIncrementalBackup(
   const payload = JSON.stringify(bundle, null, 2);
   const bundleSize = new TextEncoder().encode(payload).byteLength;
 
-  // 4. 生成规范化增量存储 Key
+  // 5. 生成规范化增量存储 Key
   const dateStr = new Date(bundle.timestamp).toISOString().split("T")[0];
   const targetKey = `${prefix}${serviceName}/inc/${dateStr}/${bundle.timestamp}_since_${sinceTimestamp}_${serviceName}.json`;
 
-  // 5. 上传增量包至 S3
+  // 6. 上传增量包至 S3
   await s3Client.putObject(targetKey, payload, {
     contentType: "application/json",
     metadata: {
@@ -102,7 +255,7 @@ export async function performScheduledIncrementalBackup(
     },
   });
 
-  // 6. 更新并持久化最新水位线
+  // 7. 更新并持久化最新水位线
   const newWatermarkState: WatermarkState = {
     service: serviceName,
     lastWatermark: untilTimestamp,
@@ -115,14 +268,13 @@ export async function performScheduledIncrementalBackup(
     contentType: "application/json",
   });
 
-  // 7. 增量历史文件生命周期清理
+  // 8. 增量历史文件生命周期清理
   const deletedKeys: string[] = [];
   try {
     const listRes = await s3Client.listObjects({
       prefix: `${prefix}${serviceName}/inc/`,
     });
 
-    const now = Date.now();
     const cutoffMs = retentionDays > 0 ? now - retentionDays * 24 * 60 * 60 * 1000 : 0;
     const existingObjects = listRes.objects.filter((obj) => obj.key !== targetKey);
 
@@ -172,7 +324,7 @@ export async function performScheduledIncrementalBackup(
 }
 
 /**
- * 列出 S3 上指定微服务的所有增量备份记录并按时间排序
+ * 列出 S3 上指定微服务的所有全量基线与增量备份记录并按时间升序排序
  */
 export async function listIncrementalBackupsFromS3(options: {
   s3: S3ClientConfig;
@@ -195,6 +347,7 @@ export async function listIncrementalBackupsFromS3(options: {
     let untilTimestamp = 0;
     let sinceTimestamp = 0;
     const isIncremental = obj.key.includes("_since_");
+    const isBaseline = obj.key.includes("/full/");
 
     if (isIncremental) {
       const match = obj.key.match(/(\d{10,13})_since_(\d+)_/);
@@ -218,6 +371,7 @@ export async function listIncrementalBackupsFromS3(options: {
       size: obj.size,
       lastModified: obj.lastModified,
       service: serviceName,
+      type: isBaseline ? "baseline" : "incremental",
       sinceTimestamp,
       untilTimestamp,
       isIncremental,
@@ -230,13 +384,14 @@ export async function listIncrementalBackupsFromS3(options: {
 }
 
 /**
- * 极简一键增量链恢复引擎（自动发现、拓扑排序、SHA-256 校验与 LWW 幂等重放）
+ * 极简精准恢复引擎（支持最新全量重放、时间范围回溯、指定勾选包重放与 Dry-Run 预检）
  */
 export async function restoreIncrementalChainFromS3(
   options: IncrementalRestoreOptions
 ): Promise<IncrementalRestoreResult> {
   const startTime = Date.now();
   const { db, serviceName, s3: s3Config } = options;
+  const mode = options.mode || "latest";
   const untilTimestamp = options.untilTimestamp ?? Date.now();
   const sinceTimestamp = options.sinceTimestamp ?? 0;
   const dryRun = options.dryRun ?? false;
@@ -251,10 +406,23 @@ export async function restoreIncrementalChainFromS3(
     keyPrefix: options.keyPrefix,
   });
 
-  // 2. 筛选在 [sinceTimestamp, untilTimestamp] 范围内的增量文件并按时间正序排列
-  const targetChain = allBackups.filter(
-    (b) => b.untilTimestamp <= untilTimestamp && (b.sinceTimestamp ?? 0) >= sinceTimestamp
-  );
+  // 2. 根据模式筛选待重放的目标文件链条
+  let targetChain: S3BackupFileSummary[] = [];
+
+  if (mode === "selected" && options.bundleKeys && options.bundleKeys.length > 0) {
+    const keySet = new Set(options.bundleKeys);
+    targetChain = allBackups.filter((b) => keySet.has(b.key));
+  } else if (mode === "timeframe") {
+    targetChain = allBackups.filter(
+      (b) => b.untilTimestamp <= untilTimestamp && (b.sinceTimestamp ?? 0) >= sinceTimestamp
+    );
+  } else {
+    // latest 模式：重放全部基线与增量包直到 untilTimestamp
+    targetChain = allBackups.filter((b) => b.untilTimestamp <= untilTimestamp);
+  }
+
+  // 严格按时间升序重放
+  targetChain.sort((a, b) => a.untilTimestamp - b.untilTimestamp);
 
   if (targetChain.length === 0) {
     return {
@@ -266,7 +434,7 @@ export async function restoreIncrementalChainFromS3(
       totalRowsAffected: 0,
       durationMs: Date.now() - startTime,
       bundleReports: [],
-      error: "No matching incremental backup bundles found in target timeframe",
+      error: "No matching backup bundles found for target selection",
     };
   }
 
@@ -438,4 +606,5 @@ export async function performScheduledS3Backup(
     durationMs: Date.now() - startTime,
   };
 }
+
 

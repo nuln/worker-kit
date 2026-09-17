@@ -163,6 +163,8 @@ export interface ScheduledIncrementalBackupOptions {
   s3: S3ClientConfig;
   /** S3 保存前缀，默认为 "backups/" */
   keyPrefix?: string;
+  /** 备份间隔（小时，如 1, 6, 12, 24）。若距离上次备份时间未达到间隔，则自动跳过 */
+  intervalHours?: number;
   /** 强制指定增量起始水位线时间戳（若不传则自动从 S3 latest_watermark.json 读取） */
   sinceTimestamp?: number;
   /** 静态小配置表名单（每次全量附带，如 ['settings', 'site_config']） */
@@ -184,8 +186,10 @@ export interface ScheduledIncrementalBackupOptions {
  */
 export interface ScheduledIncrementalBackupResult {
   success: boolean;
-  /** 是否跳过了上传（在 0 数据变动且 skipZeroChanges=true 时为 true） */
+  /** 是否跳过了上传（在 0 数据变动或未到时间间隔且 skipZeroChanges=true 时为 true） */
   skipped: boolean;
+  /** 跳过原因 */
+  skipReason?: "zero_changes" | "interval_not_reached";
   /** 上传至 S3 的增量包 Key（跳过时为 undefined） */
   uploadedKey?: string;
   /** 增量包大小（字节） */
@@ -224,10 +228,38 @@ export interface S3BackupFileSummary {
   size: number;
   lastModified?: string;
   service: string;
+  type: "baseline" | "incremental";
   sinceTimestamp?: number;
   untilTimestamp: number;
   isIncremental: boolean;
 }
+
+/**
+ * 备份系统运行状态摘要（用于前端管理后台展示）
+ */
+export interface BackupStatusResult {
+  /** 是否已存在首次全量基线备份 */
+  hasBaseline: boolean;
+  /** 首次全量基线文件 S3 Key */
+  baselineKey?: string;
+  /** 首次全量基线生成时间 */
+  baselineTime?: string;
+  /** 最新增量备份时间戳 (毫秒) */
+  latestWatermark?: number;
+  /** 最新增量备份 ISO 时间 */
+  latestBackupTime?: string;
+  /** 配置的备份间隔（小时） */
+  intervalHours: number;
+  /** 是否已启用自动备份（配置了 S3 存储桶与密钥） */
+  autoBackupEnabled: boolean;
+  /** S3 现存备份包总数 */
+  totalBackupsCount: number;
+}
+
+/**
+ * S3 增量恢复模式
+ */
+export type IncrementalRestoreMode = "latest" | "timeframe" | "selected";
 
 /**
  * S3 增量链极简恢复选项
@@ -241,9 +273,13 @@ export interface IncrementalRestoreOptions {
   s3: S3ClientConfig;
   /** S3 保存前缀，默认为 "backups/" */
   keyPrefix?: string;
-  /** 恢复回溯的终点时间戳（默认 Date.now() 即恢复到最新） */
+  /** 恢复模式："latest" (最新全量) | "timeframe" (按时间段) | "selected" (按勾选包) */
+  mode?: IncrementalRestoreMode;
+  /** 指定的具体增量包 S3 Keys 列表 (在 mode="selected" 时使用) */
+  bundleKeys?: string[];
+  /** 恢复回溯的终点时间戳（默认 Date.now()） */
   untilTimestamp?: number;
-  /** 恢复回溯的起点时间戳（可选，默认 0 即从最初增量包开始重放） */
+  /** 恢复回溯的起点时间戳（可选，默认 0） */
   sinceTimestamp?: number;
   /** 仅恢复指定的表白名单（可选） */
   includeTables?: string[];
