@@ -182,6 +182,6 @@ export function createDataExportResponse(data: unknown, filename: string): Respo
   });
 }
 
-export * from "./errors";
+export * from "./errors.js";
 
 

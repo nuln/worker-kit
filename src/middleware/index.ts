@@ -2,5 +2,5 @@
  * @nuln/worker-kit/middleware
  */
 
-export * from "./idempotency";
-export * from "./request-id";
+export * from "./idempotency.js";
+export * from "./request-id.js";

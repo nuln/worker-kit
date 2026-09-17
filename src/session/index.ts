@@ -62,5 +62,17 @@ export function formatSessionCookie(
   return `${name}=${encodeURIComponent(token)}; ${attrs}`;
 }
 
+/**
+ * 清除 Session Cookie 字符串（Max-Age=0）。
+ */
+export function clearSessionCookie(
+  name: string,
+  requestOrSecure: Request | boolean = true,
+  basePath = "",
+): string {
+  return formatSessionCookie(name, "", requestOrSecure, basePath, 0);
+}
+
 export * from "./do.js";
+
 

@@ -175,18 +175,19 @@ export function normalizeAaguid(raw: string | Uint8Array | null | undefined): st
   if (!raw) return "00000000-0000-0000-0000-000000000000";
 
   if (typeof raw === "string") {
-    const trimmed = raw.trim().toLowerCase();
+    const rawTrimmed = raw.trim();
+    const lower = rawTrimmed.toLowerCase();
     // 已经是符合 UUID 标准的 8-4-4-4-12 格式
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(trimmed)) {
-      return trimmed;
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(lower)) {
+      return lower;
     }
     // 32 位无连字符 hex 字符串
-    if (/^[0-9a-f]{32}$/.test(trimmed)) {
-      return `${trimmed.slice(0, 8)}-${trimmed.slice(8, 12)}-${trimmed.slice(12, 16)}-${trimmed.slice(16, 20)}-${trimmed.slice(20, 32)}`;
+    if (/^[0-9a-f]{32}$/.test(lower)) {
+      return `${lower.slice(0, 8)}-${lower.slice(8, 12)}-${lower.slice(12, 16)}-${lower.slice(16, 20)}-${lower.slice(20, 32)}`;
     }
-    // 尝试 base64 / base64url 解析
+    // 尝试 base64 / base64url 解析 (保留大小写)
     try {
-      const b64 = trimmed.replace(/-/g, "+").replace(/_/g, "/");
+      const b64 = rawTrimmed.replace(/-/g, "+").replace(/_/g, "/");
       const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
       const bin = atob(b64 + pad);
       if (bin.length === 16) {

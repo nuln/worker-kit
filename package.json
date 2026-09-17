@@ -25,7 +25,10 @@
     "./dns": "./src/dns/index.ts",
     "./observability": "./src/observability/index.ts",
     "./middleware": "./src/middleware/index.ts",
-    "./pwa": "./src/pwa/index.ts"
+    "./pwa": "./src/pwa/index.ts",
+    "./db": "./src/db/index.ts",
+    "./s3": "./src/s3/index.ts",
+    "./backup": "./src/backup/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
