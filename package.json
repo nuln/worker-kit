@@ -22,7 +22,10 @@
     "./webauthn": "./src/webauthn/index.ts",
     "./webauthn/aaguid": "./src/webauthn/aaguid.ts",
     "./auth": "./src/auth/index.ts",
-    "./dns": "./src/dns/index.ts"
+    "./dns": "./src/dns/index.ts",
+    "./observability": "./src/observability/index.ts",
+    "./middleware": "./src/middleware/index.ts",
+    "./pwa": "./src/pwa/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

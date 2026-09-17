@@ -8,6 +8,17 @@ import { AUTH_STYLE, FAVICON_TAG } from "./styles.js";
 import { escapeHtml } from "../http/index.js";
 import { MODAL_JS } from "./modal.js";
 import { getAuthI18n, detectLanguage, type Lang } from "./i18n.js";
+import { AUTH_SYNC_SCRIPT } from "./auth-sync.js";
+
+/**
+ * 通用 PWA Head 标签
+ */
+export const PWA_HEAD_TAGS = `
+  <meta name="theme-color" content="#18181b">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+`;
 
 /**
  * 本地开发环境统一预填默认管理员凭据（单一事实来源）
@@ -145,6 +156,9 @@ async function loginPasskey(){
     if (!data.ok && !data.redirect) {
       throw new Error(data.error || ${JSON.stringify(t.passkeyFailed)});
     }
+    if (typeof window.broadcastAuthEvent === 'function') {
+      window.broadcastAuthEvent('LOGIN');
+    }
     location.href = data.redirect || P('/');
   } catch(e) {
     if(btn) btn.disabled = false;
@@ -159,6 +173,59 @@ async function loginPasskey(){
       setMsg(err);
       alertDlg(err);
     }
+  }
+}
+
+async function startConditionalLogin() {
+  if (!window.isSecureContext || !navigator.credentials || !navigator.credentials.get) return;
+  if (!window.PublicKeyCredential || typeof PublicKeyCredential.isConditionalMediationAvailable !== 'function') return;
+  try {
+    const available = await PublicKeyCredential.isConditionalMediationAvailable();
+    if (!available) return;
+    const rOpt = await fetch(P('/api/auth/webauthn/login/options'), { method:'POST' });
+    if (!rOpt.ok) return;
+    const { tmp, options } = await rOpt.json();
+    options.challenge = b64urlToBuf(options.challenge);
+    if(options.allowCredentials) options.allowCredentials = options.allowCredentials.map(c=>({...c, id: b64urlToBuf(c.id)}));
+
+    const cred = await navigator.credentials.get({ publicKey: options, mediation: 'conditional' });
+    if (!cred) return;
+
+    const vRes = await fetch(P('/api/auth/webauthn/login/verify'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        tmp,
+        response: {
+          id: cred.id,
+          rawId: bufToB64url(cred.rawId),
+          type: cred.type,
+          response: {
+            clientDataJSON: bufToB64url(cred.response.clientDataJSON),
+            authenticatorData: bufToB64url(cred.response.authenticatorData),
+            signature: bufToB64url(cred.response.signature),
+            userHandle: cred.response.userHandle ? bufToB64url(cred.response.userHandle) : null
+          }
+        }
+      })
+    });
+    if (vRes.ok) {
+      const data = await vRes.json();
+      if (data.ok || data.redirect) {
+        if (typeof window.broadcastAuthEvent === 'function') {
+          window.broadcastAuthEvent('LOGIN');
+        }
+        location.href = data.redirect || P('/');
+      }
+    }
+  } catch(e) {}
+}
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading' && typeof document.addEventListener === 'function') {
+    document.addEventListener('DOMContentLoaded', startConditionalLogin);
+  } else {
+    startConditionalLogin();
   }
 }
 
@@ -229,6 +296,9 @@ async function setupPasskey(){
     const data = await vRes.json();
     if (!data.ok && !data.redirect) {
       throw new Error(data.error || '初始化验证失败');
+    }
+    if (typeof window.broadcastAuthEvent === 'function') {
+      window.broadcastAuthEvent('LOGIN');
     }
     location.href = data.redirect || P('/');
   } catch(e) {
@@ -404,7 +474,9 @@ export function renderLoginHtml(opts: RenderLoginOptions): string {
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>${escapeHtml(name)}</title>
   ${FAVICON_TAG}
+  ${PWA_HEAD_TAGS}
   <style>${AUTH_STYLE}</style>
+  ${AUTH_SYNC_SCRIPT}
   ${WEBAUTHN_SCRIPT(b, opts.lang)}
   ${THEME_SCRIPT}
 </head>
@@ -471,7 +543,9 @@ export function renderSetupHtml(opts: RenderSetupOptions): string {
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>${escapeHtml(name)}</title>
   ${FAVICON_TAG}
+  ${PWA_HEAD_TAGS}
   <style>${AUTH_STYLE}</style>
+  ${AUTH_SYNC_SCRIPT}
   ${WEBAUTHN_SCRIPT(b, lang)}
   ${THEME_SCRIPT}
 </head>
@@ -533,7 +607,9 @@ export function renderInviteHtml(opts: RenderInviteOptions): string {
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>${escapeHtml(name)}</title>
   ${FAVICON_TAG}
+  ${PWA_HEAD_TAGS}
   <style>${AUTH_STYLE}</style>
+  ${AUTH_SYNC_SCRIPT}
   ${WEBAUTHN_SCRIPT(b, lang)}
   ${THEME_SCRIPT}
 </head>
@@ -589,7 +665,9 @@ export function renderRecoveryHtml(opts: RenderRecoveryOptions): string {
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>${escapeHtml(name)}</title>
   ${FAVICON_TAG}
+  ${PWA_HEAD_TAGS}
   <style>${AUTH_STYLE}</style>
+  ${AUTH_SYNC_SCRIPT}
   ${THEME_SCRIPT}
 </head>
 <body>
@@ -674,7 +752,9 @@ export function renderSsoErrorHtml(opts: RenderSsoErrorOptions): string {
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>${escapeHtml(name)} - ${t.ssoErrorTitle}</title>
   ${FAVICON_TAG}
+  ${PWA_HEAD_TAGS}
   <style>${AUTH_STYLE}</style>
+  ${AUTH_SYNC_SCRIPT}
   ${THEME_SCRIPT}
 </head>
 <body>
