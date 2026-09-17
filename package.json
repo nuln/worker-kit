@@ -20,6 +20,7 @@
     "./ratelimit": "./src/ratelimit/index.ts",
     "./email": "./src/email/index.ts",
     "./webauthn": "./src/webauthn/index.ts",
+    "./webauthn/aaguid": "./src/webauthn/aaguid.ts",
     "./auth": "./src/auth/index.ts",
     "./dns": "./src/dns/index.ts"
   },

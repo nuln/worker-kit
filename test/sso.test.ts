@@ -67,4 +67,29 @@ describe("@nuln/worker-kit/sso", () => {
     expect(isSafeNextUrl("/push", "https://a.com", "/tower")).toBe(false);
     expect(isSafeNextUrl("https://evil.com", "https://a.com", "/tower")).toBe(false);
   });
+
+  it("resolveOidcIssuer: 支持 workers.dev 子域名自动跨微服务解析以及本地端口 8787 映射", () => {
+    // 1. workers.dev 子域名隔离
+    expect(
+      resolveOidcIssuer("/oidc", "https://tower.nuln.workers.dev/tower/login", "https://tower.nuln.workers.dev,https://oidc.nuln.workers.dev"),
+    ).toBe("https://oidc.nuln.workers.dev/oidc");
+
+    expect(
+      resolveOidcIssuer("/oidc", "https://mail.nuln.workers.dev/mail/login", "https://mail.nuln.workers.dev,https://oidc.nuln.workers.dev"),
+    ).toBe("https://oidc.nuln.workers.dev/oidc");
+
+    // 2. 本地回环端口映射
+    expect(
+      resolveOidcIssuer("/oidc", "http://localhost:8788/tower/login"),
+    ).toBe("http://localhost:8787/oidc");
+
+    expect(
+      resolveOidcIssuer("/oidc", "http://localhost:8789/mail/login"),
+    ).toBe("http://localhost:8787/oidc");
+
+    // 3. 统一主域名
+    expect(
+      resolveOidcIssuer("/oidc", "https://dukangxu.com/tower/login", "https://dukangxu.com"),
+    ).toBe("https://dukangxu.com/oidc");
+  });
 });

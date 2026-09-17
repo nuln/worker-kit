@@ -32,6 +32,8 @@ export {
   type AuthenticatorTransportFuture,
 };
 
+export * from "./aaguid.js";
+
 /**
  * QA-OIDC-01 compat shim: @simplewebauthn/server@13 reads the attestation
  * object map with STRING keys ('fmt'/'authData'/'attStmt'), but real CBOR

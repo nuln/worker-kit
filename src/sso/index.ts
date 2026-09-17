@@ -192,9 +192,14 @@ export function assertSsoOrigin(
 ): string {
   const url = new URL(requestUrl);
   const origin = normalizeOrigin(url.origin);
+  if (isLoopbackHostname(url.hostname)) {
+    return origin;
+  }
   const allowed = parseOriginAllowlist(allowedOriginsCsv);
+  if (allowed.includes("*")) {
+    return origin;
+  }
   if (allowed.length === 0) {
-    if (isLoopbackHostname(url.hostname)) return origin;
     throw new Error(
       "missing_config: ALLOWED_SSO_ORIGINS must be configured in production",
     );
@@ -206,8 +211,36 @@ export function assertSsoOrigin(
 }
 
 /**
+ * 根据 SP 的 Origin 智能解析 IdP OIDC 的 Issuer 地址：
+ * 1. 本地回环或局域网 (localhost / 127.0.0.1) 且带端口时，OIDC IdP 默认路由在 8787 端口；
+ * 2. Cloudflare workers.dev 边缘子域名 (<service>.<tenant>.workers.dev)，自动路由至 oidc.<tenant>.workers.dev；
+ * 3. 统一多域名/自定义主域名同构部署 (如 dukangxu.com/tower -> dukangxu.com/oidc)，原样保留 host 并拼接 subpath。
+ */
+export function deriveOidcIssuerFromOrigin(
+  spOrigin: string,
+  subPath: string = "/oidc",
+): string {
+  const normSubPath = normalizeSubPath(subPath || "/oidc");
+  const u = new URL(normalizeOrigin(spOrigin));
+
+  if (isLoopbackHostname(u.hostname)) {
+    if (u.port && u.port !== "8787") {
+      return `${u.protocol}//${u.hostname}:8787${normSubPath}`;
+    }
+    return `${u.origin}${normSubPath}`;
+  }
+
+  const match = u.hostname.match(/^([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_-]+\.workers\.dev)$/i);
+  if (match && match[1].toLowerCase() !== "oidc") {
+    return `${u.protocol}//oidc.${match[2]}${normSubPath}`;
+  }
+
+  return `${u.origin}${normSubPath}`;
+}
+
+/**
  * 解析 SP 侧目标 OIDC Issuer：
- * 相对路径（如 "/oidc"）或空值时与当前请求 origin 拼接（须先过白名单）；
+ * 相对路径（如 "/oidc"）按当前请求 origin 拼接（须先过白名单）；
  * 绝对 URL 直接归一化使用。
  */
 export function resolveOidcIssuer(
@@ -217,14 +250,12 @@ export function resolveOidcIssuer(
 ): string {
   const cleanConfig = (issuerConfig ?? "").trim().replace(/\/+$/, "");
   if (!cleanConfig) {
-    if (!requestUrl) throw new Error("request context required for dynamic OIDC_ISSUER");
-    const origin = assertSsoOrigin(requestUrl, allowedOriginsCsv);
-    return `${origin}/oidc`;
+    throw new Error("OIDC not configured");
   }
   if (cleanConfig.startsWith("/")) {
     if (!requestUrl) throw new Error("request context required for relative OIDC_ISSUER");
     const origin = assertSsoOrigin(requestUrl, allowedOriginsCsv);
-    return `${origin}${normalizeSubPath(cleanConfig)}`;
+    return deriveOidcIssuerFromOrigin(origin, cleanConfig);
   }
   if (/^https?:\/\//i.test(cleanConfig)) return normalizeIssuerUrl(cleanConfig);
   throw new Error(

@@ -298,7 +298,7 @@ function toggleTheme(forced){
 </script>
 `;
 
-export type AuthPageView = "login" | "setup" | "invite" | "recovery";
+export type AuthPageView = "login" | "setup" | "invite" | "recovery" | "sso-error";
 
 export interface AuthPageContract {
   view: AuthPageView;
@@ -312,6 +312,10 @@ export interface AuthPageContract {
     next?: string;
     defaultEmail?: string;
     inviteCode?: string;
+    error?: string;
+    errorDescription?: string;
+    retryUrl?: string;
+    loginUrl?: string;
   };
 }
 
@@ -350,6 +354,17 @@ export function renderAuthPage(contract: AuthPageContract): string {
         basePath: contract.basePath,
         lang,
         request: contract.request,
+      });
+    case "sso-error":
+      return renderSsoErrorHtml({
+        serviceName: contract.serviceName,
+        basePath: contract.basePath,
+        lang,
+        request: contract.request,
+        error: contract.options?.error,
+        errorDescription: contract.options?.errorDescription,
+        retryUrl: contract.options?.retryUrl,
+        loginUrl: contract.options?.loginUrl,
       });
   }
 }
@@ -629,6 +644,76 @@ export function renderRecoveryHtml(opts: RenderRecoveryOptions): string {
 </body>
 </html>`;
 }
+
+export interface RenderSsoErrorOptions {
+  serviceName: string;
+  basePath?: string;
+  lang?: Lang | string;
+  request?: Request;
+  error?: string;
+  errorDescription?: string;
+  retryUrl?: string;
+  loginUrl?: string;
+}
+
+export function renderSsoErrorHtml(opts: RenderSsoErrorOptions): string {
+  const b = opts.basePath || "";
+  const name = opts.serviceName || "Service";
+  const lang = opts.lang || (opts.request ? detectLanguage(opts.request) : undefined);
+  const t = getAuthI18n(lang);
+  const docLang = (lang && String(lang).startsWith("en")) ? "en" : "zh-CN";
+  const errCode = opts.error ? escapeHtml(opts.error) : "";
+  const errDesc = opts.errorDescription ? escapeHtml(opts.errorDescription) : "";
+  const retryHref = opts.retryUrl || `${b}/oidc/login`;
+  const loginHref = opts.loginUrl || `${b}/login`;
+
+  return `<!doctype html>
+<html lang="${docLang}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>${escapeHtml(name)} - ${t.ssoErrorTitle}</title>
+  ${FAVICON_TAG}
+  <style>${AUTH_STYLE}</style>
+  ${THEME_SCRIPT}
+</head>
+<body>
+  ${TOP_RIGHT_TOGGLE(lang)}
+  <div class="auth-wrap">
+    <div class="card" style="text-align:center">
+      ${renderCapsuleHeader(name)}
+      <div style="margin:8px 0 16px">
+        <div style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:rgba(239,68,68,0.1);color:#ef4444;margin-bottom:12px">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <h2 style="font-size:15px;font-weight:600;margin:0 0 6px 0;color:var(--text-primary)">${t.ssoErrorTitle}</h2>
+        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">${t.ssoErrorSub}</p>
+      </div>
+
+      ${(errCode || errDesc) ? `
+      <div style="background:var(--bg-secondary, rgba(0,0,0,0.03));border:1px solid var(--border-color, #e5e7eb);border-radius:8px;padding:10px 12px;margin-bottom:16px;text-align:left;font-size:11px;color:var(--text-secondary);word-break:break-all">
+        ${errCode ? `<div style="font-weight:600;color:var(--text-primary);margin-bottom:2px">${errCode}</div>` : ""}
+        ${errDesc ? `<div>${errDesc}</div>` : ""}
+      </div>` : ""}
+
+      <a href="${retryHref}" class="btn primary" style="display:flex;align-items:center;justify-content:center;height:38px;text-decoration:none;margin-bottom:8px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px">
+          <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+        </svg>
+        <span>${t.ssoRetryBtn}</span>
+      </a>
+
+      <div class="auth-links" style="justify-content:center">
+        <a href="${loginHref}">${t.ssoBackBtn}</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 
 
 

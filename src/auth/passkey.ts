@@ -14,6 +14,9 @@ import {
   resolveExpectedRPIDs,
   resolveExpectedOrigins,
   safeParseTransports,
+  normalizeAaguid,
+  resolveAAGUID,
+  type AuthenticatorBrandInfo,
   type WebAuthnConfig,
   type RegistrationResponseJSON,
   type AuthenticationResponseJSON,
@@ -127,7 +130,7 @@ export class PasskeyService {
     pkName = "Master Passkey",
     reqHost?: string,
     reqOrigin?: string,
-  ): Promise<{ credentialId: string; publicKey: Uint8Array; counter: number; name: string }> {
+  ): Promise<{ credentialId: string; publicKey: Uint8Array; counter: number; name: string; aaguid?: string }> {
     const chalKey = `chal:setup:${tmp}`;
     const row = await db
       .prepare("SELECT challenge, expires_at FROM passkey_challenges WHERE id = ?")
@@ -166,6 +169,7 @@ export class PasskeyService {
       credentialId: info.credential.id,
       publicKey,
       counter: info.credential.counter,
+      aaguid: normalizeAaguid((info as any).aaguid),
       name: pkName.trim() || "Passkey",
     };
   }
@@ -371,12 +375,13 @@ export class PasskeyService {
     const passkeyId = `pk_${randomToken(12)}`;
     const transportsJson = JSON.stringify(response.response?.transports || ["internal"]);
     const name = pkName.trim() || "Passkey";
+    const aaguid = normalizeAaguid((info as any).aaguid);
 
     await db
       .prepare(
-        "INSERT INTO passkey_credentials (id, user_id, credential_id, public_key, counter, transports, name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+        "INSERT INTO passkey_credentials (id, user_id, credential_id, public_key, counter, transports, name, aaguid, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
       )
-      .bind(passkeyId, userId, info.credential.id, publicKeyB64, info.credential.counter, transportsJson, name)
+      .bind(passkeyId, userId, info.credential.id, publicKeyB64, info.credential.counter, transportsJson, name, aaguid)
       .run();
 
     return {
@@ -387,18 +392,22 @@ export class PasskeyService {
       counter: info.credential.counter,
       transports: transportsJson,
       name,
+      aaguid,
     };
   }
 
   /** 获取指定用户的所有 Passkey 列表。 */
-  async listPasskeys(db: D1Database, userId: string): Promise<Array<Omit<PasskeyRecord, "publicKey">>> {
+  async listPasskeys(db: D1Database, userId: string): Promise<Array<Omit<PasskeyRecord, "publicKey"> & { brandInfo?: AuthenticatorBrandInfo }>> {
     const res = await db
       .prepare(
         "SELECT id, user_id as userId, credential_id as credentialId, counter, transports, name, aaguid, created_at as createdAt, last_used_at as lastUsedAt FROM passkey_credentials WHERE user_id = ? ORDER BY created_at DESC",
       )
       .bind(userId)
       .all<Omit<PasskeyRecord, "publicKey">>();
-    return res.results || [];
+    return (res.results || []).map((pk) => ({
+      ...pk,
+      brandInfo: resolveAAGUID(pk.aaguid),
+    }));
   }
 
   /** 删除指定 Passkey。 */

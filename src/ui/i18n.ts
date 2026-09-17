@@ -132,6 +132,10 @@ export const AUTH_I18N = {
     retryPasskeyLogin: "重试 Passkey 快捷登录",
     retryPasskeySetup: "重试注册并绑定 Passkey",
     inputEmailTip: "请输入管理员邮箱",
+    ssoErrorTitle: "单点登录未完成",
+    ssoErrorSub: "授权过程遇到异常或已超时，请重试",
+    ssoRetryBtn: "重新发起单点登录",
+    ssoBackBtn: "返回登录首页",
   },
   en: {
     setupTitle: "Setup",
@@ -166,6 +170,10 @@ export const AUTH_I18N = {
     retryPasskeyLogin: "Retry Passkey Sign-in",
     retryPasskeySetup: "Retry Passkey Registration",
     inputEmailTip: "Please enter admin email",
+    ssoErrorTitle: "Single Sign-On Incomplete",
+    ssoErrorSub: "The authorization process timed out or encountered an issue, please retry",
+    ssoRetryBtn: "Retry Single Sign-On",
+    ssoBackBtn: "Back to Login",
   },
 };
 
