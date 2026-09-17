@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { exportD1Database, restoreD1Database } from "../src/backup/engine.js";
-import { performScheduledS3Backup } from "../src/backup/s3-backup.js";
-import type { BackupBundle } from "../src/backup/types.js";
+import { exportD1Database, exportD1Incremental, restoreD1Database } from "../src/backup/engine.js";
+import {
+  performScheduledS3Backup,
+  performScheduledIncrementalBackup,
+  listIncrementalBackupsFromS3,
+  restoreIncrementalChainFromS3,
+} from "../src/backup/s3-backup.js";
+import type { BackupBundle, IncrementalBackupBundle } from "../src/backup/types.js";
 
 function createMockD1Database(data: Record<string, any[]> = {}) {
   const tableData: Record<string, any[]> = { ...data };
@@ -23,12 +28,39 @@ function createMockD1Database(data: Record<string, any[]> = {}) {
                     row[col] = params[idx];
                   });
                   if (!tableData[table]) tableData[table] = [];
-                  tableData[table].push(row);
+                  const pk = cols[0]; // e.g. 'name' or 'id'
+                  const existingIdx = tableData[table].findIndex((r) => r[pk] === row[pk]);
+                  if (existingIdx >= 0 && (sql.includes("REPLACE") || sql.includes("INSERT INTO"))) {
+                    tableData[table][existingIdx] = row;
+                  } else if (existingIdx < 0) {
+                    tableData[table].push(row);
+                  }
                 }
               }
               return { success: true };
             },
             async all() {
+              // Handle queries like WHERE updated_at > ? OR created_at > ?
+              const tableMatch = sql.match(/FROM\s+"?([^"\s]+)"?/i);
+              if (tableMatch) {
+                const table = tableMatch[1];
+                const rows = tableData[table] || [];
+                if (sql.includes("LIMIT") && sql.includes("OFFSET")) {
+                  const limit = params[0] || 1000;
+                  const offset = params[1] || 0;
+                  return { results: rows.slice(offset, offset + limit) };
+                }
+                if (sql.includes("WHERE")) {
+                  const threshold = params[0];
+                  return {
+                    results: rows.filter((r) => {
+                      const ts = r.updated_at || r.created_at || 0;
+                      return ts > threshold;
+                    }),
+                  };
+                }
+                return { results: rows };
+              }
               return { results: [] };
             },
           };
@@ -38,6 +70,16 @@ function createMockD1Database(data: Record<string, any[]> = {}) {
             return {
               results: Object.keys(tableData).map((name) => ({ name })),
             };
+          }
+          if (sql.includes("PRAGMA table_info")) {
+            const tableMatch = sql.match(/PRAGMA table_info\("?([^"\s]+)"?\)/i);
+            if (tableMatch && tableData[tableMatch[1]]) {
+              const firstRow = tableData[tableMatch[1]][0] || {};
+              return {
+                results: Object.keys(firstRow).map((col) => ({ name: col })),
+              };
+            }
+            return { results: [] };
           }
           const tableMatch = sql.match(/FROM\s+"?([^"\s]+)"?/i);
           if (tableMatch) {
@@ -86,6 +128,7 @@ describe("@nuln/worker-kit/backup - Database Export & Restore Engine", () => {
 
     expect(bundle.version).toBe(1);
     expect(bundle.service).toBe("tower");
+    expect(bundle.mode).toBe("full");
     expect(bundle.checksum.startsWith("sha256:")).toBe(true);
     expect(bundle.tables["users"]).toBeDefined();
     expect(bundle.tables["users"].rowCount).toBe(2);
@@ -111,6 +154,45 @@ describe("@nuln/worker-kit/backup - Database Export & Restore Engine", () => {
       excludeTables: ["table_b"],
     });
     expect(Object.keys(excBundle.tables).sort()).toEqual(["table_a", "table_c"].sort());
+  });
+
+  it("exportD1Incremental extracts only changed rows and static tables", async () => {
+    const mockDb = createMockD1Database({
+      users: [
+        { id: "u1", name: "Alice", updated_at: 1000 },
+        { id: "u2", name: "Bob", updated_at: 5000 },
+        { id: "u3", name: "Charlie", updated_at: 8000 },
+      ],
+      messages: [
+        { id: "m1", text: "hi", created_at: 2000 },
+        { id: "m2", text: "latest", created_at: 6000 },
+      ],
+      settings: [{ key: "app_theme", value: "dark" }],
+    });
+
+    // 1. Initial base (sinceTimestamp = 0)
+    const baseBundle = await exportD1Incremental(mockDb, {
+      serviceName: "mail",
+      sinceTimestamp: 0,
+      untilTimestamp: 10000,
+    });
+    expect(baseBundle.mode).toBe("incremental");
+    expect(baseBundle.sinceTimestamp).toBe(0);
+    expect(baseBundle.tables["users"].rowCount).toBe(3);
+    expect(baseBundle.tables["messages"].rowCount).toBe(2);
+    expect(baseBundle.staticConfig?.["settings"]).toBeDefined();
+
+    // 2. Incremental extract (sinceTimestamp = 4000)
+    const incBundle = await exportD1Incremental(mockDb, {
+      serviceName: "mail",
+      sinceTimestamp: 4000,
+      untilTimestamp: 10000,
+      staticTables: ["settings"],
+    });
+    expect(incBundle.tables["users"].rowCount).toBe(2); // u2 (5000) and u3 (8000)
+    expect(incBundle.tables["messages"].rowCount).toBe(1); // m2 (6000)
+    expect(incBundle.tables["settings"].rowCount).toBe(1); // static table fully attached
+    expect(incBundle.totalChangedRows).toBe(3);
   });
 
   it("restoreD1Database restores tables successfully", async () => {
@@ -199,7 +281,7 @@ describe("@nuln/worker-kit/backup - Database Export & Restore Engine", () => {
   });
 });
 
-describe("@nuln/worker-kit/backup - Scheduled S3 Backup & Retention", () => {
+describe("@nuln/worker-kit/backup - Incremental S3 Backup, Watermark Tracking & Chain Restore", () => {
   const originalFetch = globalThis.fetch;
   let mockFetch: any;
 
@@ -212,38 +294,23 @@ describe("@nuln/worker-kit/backup - Scheduled S3 Backup & Retention", () => {
     globalThis.fetch = originalFetch;
   });
 
-  it("performScheduledS3Backup performs export, upload, and retention cleanup", async () => {
+  it("performScheduledIncrementalBackup uploads incremental bundle and updates watermark", async () => {
     const mockDb = createMockD1Database({
-      messages: [{ id: "m1", body: "hello" }],
+      messages: [{ id: "m1", body: "hello", updated_at: 5000 }],
     });
 
-    // 1. PUT response
+    // 1. GET watermark (404/not found initially)
+    mockFetch.mockResolvedValueOnce(new Response(null, { status: 404 }));
+    // 2. PUT targetKey
     mockFetch.mockResolvedValueOnce(new Response(null, { status: 200, headers: { etag: '"etag-1"' } }));
+    // 3. PUT latest_watermark.json
+    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    // 4. LIST objects for retention
+    mockFetch.mockResolvedValueOnce(new Response("<ListBucketResult><Contents></Contents></ListBucketResult>", { status: 200 }));
 
-    // 2. LIST response with old expired backup and fresh backup
-    const listXml = `<?xml version="1.0" encoding="UTF-8"?>
-<ListBucketResult>
-  <Contents>
-    <Key>backups/mail/2026-08-01_1722470400000_mail.json</Key>
-    <LastModified>2026-08-01T00:00:00.000Z</LastModified>
-    <Size>100</Size>
-  </Contents>
-  <Contents>
-    <Key>backups/mail/2026-09-16_1789400000000_mail.json</Key>
-    <LastModified>2026-09-16T00:00:00.000Z</LastModified>
-    <Size>200</Size>
-  </Contents>
-</ListBucketResult>`;
-    mockFetch.mockResolvedValueOnce(new Response(listXml, { status: 200 }));
-
-    // 3. DELETE response for the expired backup
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 204 }));
-
-    const result = await performScheduledS3Backup({
+    const res = await performScheduledIncrementalBackup({
       db: mockDb,
       serviceName: "mail",
-      retentionDays: 14,
-      maxBackups: 10,
       s3: {
         endpoint: "https://r2.cloudflarestorage.com",
         bucket: "backups",
@@ -252,36 +319,29 @@ describe("@nuln/worker-kit/backup - Scheduled S3 Backup & Retention", () => {
       },
     });
 
-    expect(result.success).toBe(true);
-    expect(result.uploadedKey).toContain("backups/mail/");
-    expect(result.checksum.startsWith("sha256:")).toBe(true);
-    expect(result.deletedKeys).toContain("backups/mail/2026-08-01_1722470400000_mail.json");
-    expect(mockFetch).toHaveBeenCalledTimes(3); // PUT + LIST + DELETE
+    expect(res.success).toBe(true);
+    expect(res.skipped).toBe(false);
+    expect(res.uploadedKey).toContain("backups/mail/inc/");
+    expect(res.totalChangedRows).toBe(1);
+    expect(res.checksum?.startsWith("sha256:")).toBe(true);
   });
 
-  it("performScheduledS3Backup enforces maxBackups policy", async () => {
-    const mockDb = createMockD1Database({ items: [{ id: 1 }] });
+  it("performScheduledIncrementalBackup skips upload on 0 changes when skipZeroChanges=true", async () => {
+    const mockDb = createMockD1Database({
+      messages: [{ id: "m1", body: "hello", updated_at: 1000 }],
+    });
 
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }));
+    // 1. GET watermark returns watermark = 2000 (after updated_at)
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ lastWatermark: 2000, service: "mail" }), { status: 200 })
+    );
 
-    // Return 3 items while maxBackups = 2
-    const listXml = `<?xml version="1.0" encoding="UTF-8"?>
-<ListBucketResult>
-  <Contents><Key>backups/push/2026-09-10_1788800000000_push.json</Key></Contents>
-  <Contents><Key>backups/push/2026-09-11_1788900000000_push.json</Key></Contents>
-  <Contents><Key>backups/push/2026-09-12_1789000000000_push.json</Key></Contents>
-</ListBucketResult>`;
-    mockFetch.mockResolvedValueOnce(new Response(listXml, { status: 200 }));
-    // Delete oldest excess items
-    mockFetch.mockResolvedValue(new Response(null, { status: 204 }));
-
-    const res = await performScheduledS3Backup({
+    const res = await performScheduledIncrementalBackup({
       db: mockDb,
-      serviceName: "push",
-      retentionDays: 365,
-      maxBackups: 2,
+      serviceName: "mail",
+      skipZeroChanges: true,
       s3: {
-        endpoint: "http://127.0.0.1:9000",
+        endpoint: "https://r2.cloudflarestorage.com",
         bucket: "backups",
         accessKeyId: "ak",
         secretAccessKey: "sk",
@@ -289,6 +349,149 @@ describe("@nuln/worker-kit/backup - Scheduled S3 Backup & Retention", () => {
     });
 
     expect(res.success).toBe(true);
-    expect(res.deletedKeys.length).toBeGreaterThanOrEqual(2);
+    expect(res.skipped).toBe(true);
+    expect(res.totalChangedRows).toBe(0);
+    // Only 1 GET request made to check watermark, no PUTs made
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("listIncrementalBackupsFromS3 parses and sorts incremental backups chronologically", async () => {
+    const listXml = `<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult>
+  <Contents>
+    <Key>backups/tower/inc/2026-09-17/1789540000000_since_1789530000000_tower.json</Key>
+    <LastModified>2026-09-17T02:00:00.000Z</LastModified>
+    <Size>512</Size>
+  </Contents>
+  <Contents>
+    <Key>backups/tower/inc/2026-09-16/1789450000000_since_0_tower.json</Key>
+    <LastModified>2026-09-16T02:00:00.000Z</LastModified>
+    <Size>1024</Size>
+  </Contents>
+</ListBucketResult>`;
+    mockFetch.mockResolvedValueOnce(new Response(listXml, { status: 200 }));
+
+    const summaries = await listIncrementalBackupsFromS3({
+      serviceName: "tower",
+      s3: {
+        endpoint: "https://r2.cloudflarestorage.com",
+        bucket: "backups",
+        accessKeyId: "ak",
+        secretAccessKey: "sk",
+      },
+    });
+
+    expect(summaries.length).toBe(2);
+    // Sorted ascending: 1789450000000 before 1789540000000
+    expect(summaries[0].sinceTimestamp).toBe(0);
+    expect(summaries[1].sinceTimestamp).toBe(1789530000000);
+  });
+
+  it("restoreIncrementalChainFromS3 replays incremental bundles with dry-run support", async () => {
+    const mockDb = createMockD1Database({
+      subs: [{ name: "sub1", url: "https://old.url" }],
+    });
+
+    const { sha256Hex } = await import("../src/s3/sigv4.js");
+
+    // Bundle 1 (base): sub1, sub2
+    const bundle1Tables = {
+      subs: {
+        name: "subs",
+        rowCount: 2,
+        columns: ["name", "url"],
+        rows: [
+          { name: "sub1", url: "https://updated1.url" },
+          { name: "sub2", url: "https://sub2.url" },
+        ],
+      },
+    };
+    const bundle1: IncrementalBackupBundle = {
+      version: 1,
+      mode: "incremental",
+      service: "tower",
+      sinceTimestamp: 0,
+      untilTimestamp: 1000,
+      timestamp: 1000,
+      createdAt: new Date(1000).toISOString(),
+      totalChangedRows: 2,
+      checksum: `sha256:${await sha256Hex(JSON.stringify(bundle1Tables))}`,
+      tables: bundle1Tables,
+    };
+
+    // Bundle 2 (delta): sub3 added
+    const bundle2Tables = {
+      subs: {
+        name: "subs",
+        rowCount: 1,
+        columns: ["name", "url"],
+        rows: [{ name: "sub3", url: "https://sub3.url" }],
+      },
+    };
+    const bundle2: IncrementalBackupBundle = {
+      version: 1,
+      mode: "incremental",
+      service: "tower",
+      sinceTimestamp: 1000,
+      untilTimestamp: 2000,
+      timestamp: 2000,
+      createdAt: new Date(2000).toISOString(),
+      totalChangedRows: 1,
+      checksum: `sha256:${await sha256Hex(JSON.stringify(bundle2Tables))}`,
+      tables: bundle2Tables,
+    };
+
+    // 1. Dry Run Execution
+    const listXml = `<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult>
+  <Contents><Key>backups/tower/inc/2026-09-16/1000_since_0_tower.json</Key></Contents>
+  <Contents><Key>backups/tower/inc/2026-09-17/2000_since_1000_tower.json</Key></Contents>
+</ListBucketResult>`;
+    mockFetch.mockResolvedValueOnce(new Response(listXml, { status: 200 })); // LIST
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify(bundle1), { status: 200 })); // GET 1
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify(bundle2), { status: 200 })); // GET 2
+
+    const dryRunResult = await restoreIncrementalChainFromS3({
+      db: mockDb,
+      serviceName: "tower",
+      dryRun: true,
+      s3: {
+        endpoint: "https://r2.cloudflarestorage.com",
+        bucket: "backups",
+        accessKeyId: "ak",
+        secretAccessKey: "sk",
+      },
+    });
+
+    expect(dryRunResult.success).toBe(true);
+    expect(dryRunResult.dryRun).toBe(true);
+    expect(dryRunResult.appliedBundlesCount).toBe(2);
+    expect(dryRunResult.totalRowsAffected).toBe(3);
+    // DB unchanged in dry run
+    expect(mockDb._data["subs"].length).toBe(1);
+
+    // 2. Real Restore Execution
+    mockFetch.mockResolvedValueOnce(new Response(listXml, { status: 200 })); // LIST
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify(bundle1), { status: 200 })); // GET 1
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify(bundle2), { status: 200 })); // GET 2
+
+    const realResult = await restoreIncrementalChainFromS3({
+      db: mockDb,
+      serviceName: "tower",
+      dryRun: false,
+      conflictStrategy: "replace",
+      s3: {
+        endpoint: "https://r2.cloudflarestorage.com",
+        bucket: "backups",
+        accessKeyId: "ak",
+        secretAccessKey: "sk",
+      },
+    });
+
+    expect(realResult.success).toBe(true);
+    expect(realResult.dryRun).toBe(false);
+    expect(realResult.appliedBundlesCount).toBe(2);
+    expect(mockDb._data["subs"].length).toBe(3); // All 3 records restored/updated
   });
 });
+
