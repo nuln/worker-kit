@@ -21,3 +21,4 @@ export * as dns from "./dns/index";
 export * as observability from "./observability/index";
 export * as middleware from "./middleware/index";
 export * as pwa from "./pwa/index";
+export * as db from "./db/index";

@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   RateLimiterDO,
   RateLimitService,
-} from "../src/ratelimit/index.js";
+  applyRateLimitHeaders,
+  rateLimitMiddleware,
+} from "../src/ratelimit/index";
 
 describe("@nuln/worker-kit/ratelimit", () => {
   it("RateLimiterDO: 内存窗口计数与超额拦截", async () => {
@@ -14,6 +16,7 @@ describe("@nuln/worker-kit/ratelimit", () => {
     const r1 = await limiter.consume(key, limit, windowSec);
     expect(r1.ok).toBe(true);
     expect(r1.remaining).toBe(2);
+    expect(r1.resetSeconds).toBe(1);
 
     const r2 = await limiter.consume(key, limit, windowSec);
     expect(r2.ok).toBe(true);
@@ -58,5 +61,29 @@ describe("@nuln/worker-kit/ratelimit", () => {
     const result = await service.consume("ip_1.2.3.4", 10, 60);
     expect(result.ok).toBe(true);
     expect(result.remaining).toBe(9);
+  });
+
+  it("applyRateLimitHeaders & rateLimitMiddleware inject standard IETF headers", async () => {
+    const headers = new Headers();
+    applyRateLimitHeaders(headers, { ok: true, limit: 100, remaining: 95, resetSeconds: 30 });
+    expect(headers.get("RateLimit-Limit")).toBe("100");
+    expect(headers.get("RateLimit-Remaining")).toBe("95");
+    expect(headers.get("RateLimit-Reset")).toBe("30");
+
+    // Test middleware
+    const middleware = rateLimitMiddleware({ limit: 2, windowSec: 10, keyGenerator: () => "test-user" });
+    const resHeaders = new Headers();
+    const mockCtx: any = {
+      req: { header: () => undefined },
+      res: { headers: resHeaders },
+      env: {},
+    };
+
+    let nextCalled = false;
+    const resp1 = await middleware(mockCtx, async () => { nextCalled = true; });
+    expect(nextCalled).toBe(true);
+    expect(resp1).toBeUndefined();
+    expect(resHeaders.get("RateLimit-Limit")).toBe("2");
+    expect(resHeaders.get("RateLimit-Remaining")).toBe("1");
   });
 });
