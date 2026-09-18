@@ -96,7 +96,7 @@ const WEBAUTHN_SCRIPT = (basePath: string, lang?: string) => {
 <script>
 ${MODAL_JS}
 const B = ${JSON.stringify(basePath)};
-const P = (t) => B + t;
+const P = (path) => B + path;
 function alertDlg(){ if (typeof window !== 'undefined' && window.alertDlg) return window.alertDlg.apply(window, arguments); }
 function confirmDlg(){ if (typeof window !== 'undefined' && window.confirmDlg) return window.confirmDlg.apply(window, arguments); }
 function toast(){ if (typeof window !== 'undefined' && window.toast) return window.toast.apply(window, arguments); }
