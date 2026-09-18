@@ -9,6 +9,54 @@ import { escapeHtml } from "../http/index.js";
 import { MODAL_JS } from "./modal.js";
 import { getAuthI18n, detectLanguage, type Lang } from "./i18n.js";
 import { AUTH_SYNC_SCRIPT } from "./auth-sync.js";
+import type {
+  UiTheme,
+  AuthPageView,
+  RenderSetupOptions,
+  RenderLoginOptions,
+  RenderInviteOptions,
+  RenderRecoveryOptions,
+  RenderConsentOptions,
+  RenderSsoErrorOptions,
+  RenderOidcChoiceOptions,
+} from "./themes/types.js";
+import {
+  renderModernSetupHtml,
+  renderModernLoginHtml,
+  renderModernInviteHtml,
+  renderModernRecoveryHtml,
+  renderModernConsentHtml,
+  renderModernSsoErrorHtml,
+} from "./themes/modern/index.js";
+
+/**
+ * 自适应解析 UI 主题：支持代码参数显式传入、URL Query (?ui_theme= / ?theme=)、Cookie 以及环境变量 UI_THEME
+ * 默认值为 "classic"（经典灰白极简 Charcoal-Slate 风格）
+ */
+export function resolveUiTheme(opts?: {
+  theme?: UiTheme | string;
+  request?: Request;
+  env?: any;
+}): UiTheme {
+  if (opts?.theme === "modern" || opts?.theme === "classic") {
+    return opts.theme;
+  }
+  if (opts?.request) {
+    try {
+      const url = new URL(opts.request.url);
+      const qTheme = url.searchParams.get("ui_theme") || url.searchParams.get("theme");
+      if (qTheme === "modern" || qTheme === "classic") return qTheme;
+
+      const cookieHeader = opts.request.headers.get("cookie") || "";
+      if (cookieHeader.includes("ui_theme=modern") || cookieHeader.includes("theme=modern")) return "modern";
+      if (cookieHeader.includes("ui_theme=classic") || cookieHeader.includes("theme=classic")) return "classic";
+    } catch {}
+  }
+  if (opts?.env?.UI_THEME === "modern" || opts?.env?.UI_THEME === "classic") {
+    return opts.env.UI_THEME;
+  }
+  return "classic";
+}
 
 /**
  * 通用 PWA Head 标签
@@ -368,13 +416,12 @@ function toggleTheme(forced){
 </script>
 `;
 
-export type AuthPageView = "login" | "setup" | "invite" | "recovery" | "sso-error";
-
 export interface AuthPageContract {
   view: AuthPageView;
   serviceName: string;
   basePath?: string;
   lang?: Lang | string;
+  theme?: UiTheme;
   request?: Request;
   options?: {
     needsSetup?: boolean;
@@ -386,20 +433,27 @@ export interface AuthPageContract {
     errorDescription?: string;
     retryUrl?: string;
     loginUrl?: string;
+    ssoProviders?: Array<{ id: string; name: string; icon?: string }>;
+    enableRecovery?: boolean;
   };
 }
 
 export function renderAuthPage(contract: AuthPageContract): string {
   const lang = contract.lang || (contract.request ? detectLanguage(contract.request) : undefined);
+  const theme = resolveUiTheme({ theme: contract.theme, request: contract.request });
+
   switch (contract.view) {
     case "login":
       return renderLoginHtml({
         serviceName: contract.serviceName,
         basePath: contract.basePath,
         lang,
+        theme,
         request: contract.request,
         needsSetup: contract.options?.needsSetup,
         oidcEnabled: contract.options?.oidcEnabled,
+        ssoProviders: contract.options?.ssoProviders,
+        enableRecovery: contract.options?.enableRecovery,
         next: contract.options?.next,
       });
     case "setup":
@@ -407,6 +461,7 @@ export function renderAuthPage(contract: AuthPageContract): string {
         serviceName: contract.serviceName,
         basePath: contract.basePath,
         lang,
+        theme,
         request: contract.request,
         defaultEmail: contract.options?.defaultEmail,
       });
@@ -415,6 +470,7 @@ export function renderAuthPage(contract: AuthPageContract): string {
         serviceName: contract.serviceName,
         basePath: contract.basePath,
         lang,
+        theme,
         request: contract.request,
         inviteCode: contract.options?.inviteCode,
       });
@@ -423,6 +479,7 @@ export function renderAuthPage(contract: AuthPageContract): string {
         serviceName: contract.serviceName,
         basePath: contract.basePath,
         lang,
+        theme,
         request: contract.request,
       });
     case "sso-error":
@@ -430,12 +487,15 @@ export function renderAuthPage(contract: AuthPageContract): string {
         serviceName: contract.serviceName,
         basePath: contract.basePath,
         lang,
+        theme,
         request: contract.request,
         error: contract.options?.error,
         errorDescription: contract.options?.errorDescription,
         retryUrl: contract.options?.retryUrl,
         loginUrl: contract.options?.loginUrl,
       });
+    default:
+      return "";
   }
 }
 
@@ -449,17 +509,12 @@ export function authPageResponse(contract: AuthPageContract, init?: ResponseInit
   });
 }
 
-export interface RenderLoginOptions {
-  serviceName: string;
-  basePath?: string;
-  lang?: Lang | string;
-  request?: Request;
-  needsSetup?: boolean;
-  oidcEnabled?: boolean;
-  next?: string;
-}
-
 export function renderLoginHtml(opts: RenderLoginOptions): string {
+  const theme = resolveUiTheme({ theme: opts.theme, request: opts.request });
+  if (theme === "modern") {
+    return renderModernLoginHtml(opts);
+  }
+
   const b = opts.basePath || "";
   const name = opts.serviceName || "Service";
   const lang = opts.lang || (opts.request ? detectLanguage(opts.request) : undefined);
@@ -517,15 +572,12 @@ export function renderLoginHtml(opts: RenderLoginOptions): string {
 </html>`;
 }
 
-export interface RenderSetupOptions {
-  serviceName: string;
-  basePath?: string;
-  lang?: Lang | string;
-  request?: Request;
-  defaultEmail?: string;
-}
-
 export function renderSetupHtml(opts: RenderSetupOptions): string {
+  const theme = resolveUiTheme({ theme: opts.theme, request: opts.request });
+  if (theme === "modern") {
+    return renderModernSetupHtml(opts);
+  }
+
   const b = opts.basePath || "";
   const name = opts.serviceName || "Service";
   const dev = getDevSetupDefaults(opts.request);
@@ -584,15 +636,12 @@ export function renderSetupHtml(opts: RenderSetupOptions): string {
 </html>`;
 }
 
-export interface RenderInviteOptions {
-  serviceName: string;
-  basePath?: string;
-  lang?: Lang | string;
-  request?: Request;
-  inviteCode?: string;
-}
-
 export function renderInviteHtml(opts: RenderInviteOptions): string {
+  const theme = resolveUiTheme({ theme: opts.theme, request: opts.request });
+  if (theme === "modern") {
+    return renderModernInviteHtml(opts);
+  }
+
   const b = opts.basePath || "";
   const name = opts.serviceName || "Service";
   const code = opts.inviteCode || "";
@@ -624,7 +673,7 @@ export function renderInviteHtml(opts: RenderInviteOptions): string {
       </div>
 
       <input id="invite-code" type="text" placeholder="${t.inviteCodePh}" value="${escapeHtml(code)}" ${code ? "readonly" : "autofocus"} required>
-      <input id="email" type="email" placeholder="${t.emailPh}" required>
+      <input id="email" type="email" placeholder="${t.emailPh}" value="${escapeHtml(opts.prefillEmail || "")}" required>
       <input id="name" type="text" placeholder="${t.displayNamePh}">
       <input id="pk-name" type="text" placeholder="${t.pkNamePh}" maxlength="40">
 
@@ -644,14 +693,12 @@ export function renderInviteHtml(opts: RenderInviteOptions): string {
 </html>`;
 }
 
-export interface RenderRecoveryOptions {
-  serviceName: string;
-  basePath?: string;
-  lang?: Lang | string;
-  request?: Request;
-}
-
 export function renderRecoveryHtml(opts: RenderRecoveryOptions): string {
+  const theme = resolveUiTheme({ theme: opts.theme, request: opts.request });
+  if (theme === "modern") {
+    return renderModernRecoveryHtml(opts);
+  }
+
   const b = opts.basePath || "";
   const name = opts.serviceName || "Service";
   const lang = opts.lang || (opts.request ? detectLanguage(opts.request) : undefined);
@@ -723,18 +770,12 @@ export function renderRecoveryHtml(opts: RenderRecoveryOptions): string {
 </html>`;
 }
 
-export interface RenderSsoErrorOptions {
-  serviceName: string;
-  basePath?: string;
-  lang?: Lang | string;
-  request?: Request;
-  error?: string;
-  errorDescription?: string;
-  retryUrl?: string;
-  loginUrl?: string;
-}
-
 export function renderSsoErrorHtml(opts: RenderSsoErrorOptions): string {
+  const theme = resolveUiTheme({ theme: opts.theme, request: opts.request });
+  if (theme === "modern") {
+    return renderModernSsoErrorHtml(opts);
+  }
+
   const b = opts.basePath || "";
   const name = opts.serviceName || "Service";
   const lang = opts.lang || (opts.request ? detectLanguage(opts.request) : undefined);

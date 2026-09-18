@@ -93,7 +93,7 @@ export async function hmacSha256(
 ): Promise<ArrayBuffer> {
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
-    key,
+    key as any,
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"]

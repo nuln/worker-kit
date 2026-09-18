@@ -7,4 +7,5 @@ export * from "./auth.js";
 export * from "./auth-pages.js";
 export * from "./auth-sync.js";
 export * from "./modal.js";
+export * from "./themes/index.js";
 

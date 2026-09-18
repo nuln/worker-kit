@@ -18,14 +18,42 @@ import type {
 const SYSTEM_TABLE_PREFIXES = ["sqlite_", "_cf_", "d1_", "drizzle_"];
 
 /**
- * 发现 D1 数据库中所有物理业务表
+ * 发现 D1 数据库中所有物理业务表（自动过滤系统表、虚拟表及其影子表）
  */
 export async function getD1UserTables(db: any): Promise<string[]> {
-  const masterQuery = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'";
-  const tableRows = await db.prepare(masterQuery).all();
-  return (tableRows?.results || [])
-    .map((r: any) => String(r.name))
-    .filter((name: string) => !SYSTEM_TABLE_PREFIXES.some((p) => name.startsWith(p)));
+  try {
+    const masterQuery = "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'";
+    const tableRows = await db.prepare(masterQuery).all();
+    const results: any[] = tableRows?.results || [];
+
+    // 找出所有虚拟表名称
+    const virtualTables = new Set<string>();
+    for (const r of results) {
+      const sql = String(r.sql || "");
+      if (sql.toUpperCase().includes("VIRTUAL TABLE")) {
+        virtualTables.add(String(r.name));
+      }
+    }
+
+    const isShadowOfVirtual = (name: string) => {
+      for (const vt of virtualTables) {
+        if (name.startsWith(`${vt}_`)) return true;
+      }
+      return false;
+    };
+
+    return results
+      .map((r: any) => String(r.name))
+      .filter((name: string) => {
+        if (SYSTEM_TABLE_PREFIXES.some((p) => name.startsWith(p))) return false;
+        if (virtualTables.has(name)) return false;
+        if (isShadowOfVirtual(name)) return false;
+        return true;
+      });
+  } catch (err: any) {
+    console.warn("[BackupEngine] Failed to query sqlite_master for user tables:", err?.message);
+    return [];
+  }
 }
 
 /**

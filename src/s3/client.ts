@@ -152,7 +152,7 @@ export class S3Client {
     const res = await fetch(url.toString(), {
       method: "PUT",
       headers: signedHeaders,
-      body: data,
+      body: data as any,
     });
 
     if (!res.ok) {
