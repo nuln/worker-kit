@@ -1,0 +1,70 @@
+{
+  "name": "@nuln/worker-kit",
+  "version": "0.1.0",
+  "description": "Unified core toolkit for Cloudflare Workers in Nuln ecosystem (SSO, UI Design Tokens, Crypto, Session, HTTP Helpers)",
+  "type": "module",
+  "main": "./src/index.ts",
+  "sideEffects": false,
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./auth": "./src/auth/index.ts",
+    "./backup": "./src/backup/index.ts",
+    "./basepath": "./src/basepath/index.ts",
+    "./config": "./src/config/index.ts",
+    "./conventions": "./src/conventions.ts",
+    "./crypto": "./src/crypto/index.ts",
+    "./db": "./src/db/index.ts",
+    "./dns": "./src/dns/index.ts",
+    "./email": "./src/email/index.ts",
+    "./flags": "./src/flags/index.ts",
+    "./http": "./src/http/index.ts",
+    "./middleware": "./src/middleware/index.ts",
+    "./notify": "./src/notify/index.ts",
+    "./observability": "./src/observability/index.ts",
+    "./pwa": "./src/pwa/index.ts",
+    "./ratelimit": "./src/ratelimit/index.ts",
+    "./rbac": "./src/rbac/index.ts",
+    "./s3": "./src/s3/index.ts",
+    "./session": "./src/session/index.ts",
+    "./sso": "./src/sso/index.ts",
+    "./sync": "./src/sync/index.ts",
+    "./ui": "./src/ui/index.ts",
+    "./ui/styles": "./src/ui/styles.ts",
+    "./urls": "./src/urls/index.ts",
+    "./webauthn": "./src/webauthn/index.ts",
+    "./webauthn/aaguid": "./src/webauthn/aaguid.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit",
+    "test": "npm run test:coverage && npm run test:gate",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist coverage",
+    "check:env": "vite-node scripts/check-required-env.mjs",
+    "test:gate": "COVERAGE_GATE=1 vitest run test/unit/coverage-floor-gate.test.ts"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260823.1",
+    "@vitest/coverage-v8": "4.1.11",
+    "typescript": "^5.9.2",
+    "vite-node": "^6.0.0",
+    "vitest": "4.1.11"
+  },
+  "keywords": [
+    "cloudflare-workers",
+    "worker-kit",
+    "oidc",
+    "sso",
+    "design-tokens",
+    "crypto",
+    "nuln"
+  ],
+  "author": "Nuln Team",
+  "license": "MIT",
+  "dependencies": {
+    "@levischuck/tiny-cbor": "^0.2.11",
+    "@simplewebauthn/server": "^13.3.3"
+  }
+}
