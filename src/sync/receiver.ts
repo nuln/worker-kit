@@ -115,7 +115,45 @@ function toSnakeCase(str: string): string {
 }
 
 /**
+ * 严格 ISO 8601 日期字符串：`2026-09-29T00:54:39.237Z` / `...+08:00`
+ *
+ * 必须带日期与时间分隔符 `T` 且带时区标记（`Z` 或 `±HH:MM`）。
+ * 不匹配裸日期（`2026-09-29`）—— 那更可能是业务上的日期字符串列。
+ */
+const ISO_8601_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/**
  * 转换字段值为 SQLite 友好格式（布尔值 -> 0/1，Date -> 毫秒时间戳/ISO）
+ *
+ * ## 为什么必须把 ISO 日期字符串转成毫秒
+ *
+ * 发送端用 `JSON.stringify` 序列化 payload，`Date` 会变成 ISO 字符串。
+ * 接收端拿到的**不再是 Date 实例**，而落到本函数的 `typeof val === "string"`
+ * 分支被原样返回 —— 于是 ISO 串被写进 `integer({ mode: "timestamp" })` 列。
+ *
+ * SQLite 不做隐式类型转换，列里存成 `typeof = 'text'`。而 LWW 删除守卫是
+ *
+ * ```sql
+ * DELETE FROM t WHERE pk = ? AND (updated_at IS NULL OR updated_at <= ?)
+ * ```
+ *
+ * 右边的 `?` 是**数字**毫秒时间戳。SQLite 的类型排序为
+ * `NULL < INTEGER/REAL < TEXT < BLOB`，即**任何 TEXT 都大于任何 INTEGER**，
+ * 于是该条件对任意时间戳恒为 `false`。
+ *
+ * 后果：灾备同步的**删除事件被永久静默丢弃** —— 主站删掉的记录在备站
+ * 一直留存，DR 恢复后数据"复活"，且接收端返回 200，没有任何报错。
+ * 同时 Drizzle 以 timestamp 模式读回 TEXT 会得到 `Date { NaN }`。
+ *
+ * ## 权衡：为什么按格式识别而不是查列类型
+ *
+ * 更"精确"的做法是查本地表的 declared type，仅对 INTEGER/REAL 列转换。
+ * 但那要多一次 schema 查询，且 D1 的 PRAGMA 在热路径上不可接受。
+ *
+ * 折中：只转换严格符合 ISO 8601 的字符串。业务 TEXT 列要"恰好"存成
+ * 带时区的完整 ISO 串才会被波及，实践中几乎不存在；且本库所有参与同步的
+ * 表都由 Drizzle schema 统一管理，时间列一律声明为 `integer({mode:'timestamp'})`
+ * （见 AGENTS §5.3：同步表必须含毫秒级 `created_at` / `updated_at`）。
  */
 function normalizeSqliteValue(val: unknown): unknown {
   if (val === null || val === undefined) {
@@ -126,6 +164,12 @@ function normalizeSqliteValue(val: unknown): unknown {
   }
   if (val instanceof Date) {
     return val.getTime();
+  }
+  if (typeof val === "string" && ISO_8601_RE.test(val)) {
+    const ms = Date.parse(val);
+    // 形似 ISO 但无法解析（如 2026-13-45T99:99:99Z）时保留原串：
+    // 静默变成 0 会把记录判成"1970 年"，比保留原值更难排查
+    return Number.isNaN(ms) ? val : ms;
   }
   if (typeof val === "object") {
     if (val instanceof Uint8Array || val instanceof ArrayBuffer) {
