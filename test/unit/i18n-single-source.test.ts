@@ -117,8 +117,22 @@ describe("i18n 注入：服务端按请求语言挑好文案下发", () => {
   });
 
   it("注入内容按语言正确挑选", () => {
-    const en = JSON.parse(i18nAssignment("en").replace(/^window\.__I18N__ = /, "").replace(/;$/, ""));
-    const zh = JSON.parse(i18nAssignment("zh").replace(/^window\.__I18N__ = /, "").replace(/;$/, ""));
+    // 只取第一条赋值语句（到第一个 `;` 为止）。
+    //
+    // 此前用 `replace(/;$/, "")` 剥尾部分号 —— 那假定整段输出**只有**一条
+    // 语句。现在 `i18nAssignment` 还会一并注入 `window.__t` 读取器
+    // （弹窗脚本裸调 `__t`，缺定义即 ReferenceError），尾部分号后面还有内容，
+    // 该写法直接 JSON.parse 失败。
+    //
+    // 改用"截到第一个分号"而非"剥掉末尾分号"：注入内容增删时本用例都成立。
+    const dictOf = (lang: string): Record<string, unknown> => {
+      const out = i18nAssignment(lang);
+      const start = out.indexOf("=") + 1;
+      const end = out.indexOf(";", start);
+      return JSON.parse(out.slice(start, end)) as Record<string, unknown>;
+    };
+    const en = dictOf("en");
+    const zh = dictOf("zh");
     expect(en.modalOk).toBe("OK");
     expect(zh.modalOk).toBe("确定");
   });

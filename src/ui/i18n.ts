@@ -314,10 +314,26 @@ export function i18nAssignment(lang?: string): string {
     .replace(/&/g, "\\u0026")
     .replace(/\u2028/g, "\\u2028")
     .replace(/\u2029/g, "\\u2029");
-  return "window.__I18N__ = " + json + ";"
+  // 【必须与字典一起注入读取器】
+  //
+  // `ui/modal.ts` 等客户端脚本用的是**裸** `__t('modalTitle')`。浏览器里
+  // `window.__t = ...` 等价于建全局，裸调用成立。
+  //
+  // 此前本函数只注入字典，而 `CLIENT_I18N_HELPER` 虽有导出却**零引用**
+  // （死代码），于是页面上根本没有 `__t` 定义：用户点开任何弹窗即抛
+  // `ReferenceError: __t is not defined`，弹窗标题空白。
+  //
+  // 单元测试用 `new Function` 沙箱执行页面脚本时 window 只是普通参数，
+  // 裸标识符同样解析不到 —— 两种环境都失败，说明这不是环境差异而是真缺陷。
+  return "window.__I18N__ = " + json + ";\n" + CLIENT_I18N_HELPER;
 }
 
-/** 客户端侧的文案读取器（在浏览器脚本内使用）。取不到注入对象时回落 key 本身。 */
+/**
+ * 客户端侧的文案读取器（在浏览器脚本内使用）。取不到注入对象时回落 key 本身。
+ *
+ * 由 {@link i18nAssignment} 自动注入，**不需要**（也不应）单独插入页面 ——
+ * 单独插入过一次，却因与字典分离而同样导致 `__t` 未定义。
+ */
 export const CLIENT_I18N_HELPER =
   "window.__t = function (key) { var d = window.__I18N__ || {};" +
   " return (key in d) ? d[key] : key; };";
